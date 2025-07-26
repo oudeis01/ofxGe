@@ -1,5 +1,5 @@
 #include "ofApp.h"
-#include "plugin-system/PluginManager.h"
+#include "pluginSystem/PluginManager.h"
 #include <iostream>
 
 //--------------------------------------------------------------
@@ -24,7 +24,8 @@ void ofApp::setup(){
 
 //--------------------------------------------------------------
 void ofApp::update(){
-
+    ofShader s;
+    s.load("shaders/noise");
 }
 
 //--------------------------------------------------------------
@@ -88,38 +89,52 @@ void ofApp::keyPressed(int key){
             }
             break;
     }
+
+    if(key == 's'){
+        const GLSLFunction* function_metadata = plugin_manager->findFunction("LygiaPlugin", "snoise");
+        if (function_metadata) {
+            ofLogNotice("ofApp") << "Found function: " << function_metadata->name 
+                                 << " in plugin: LygiaPlugin"
+                                 << " at path: " << function_metadata->filePath;
+            for (const auto& overload : function_metadata->overloads) {
+                ofLogNotice("ofApp") << "  Overload: " << overload.returnType
+                                     << " with params: " << ofJoinString(overload.paramTypes, ", ");
+            }
+        } else {
+            ofLogError("ofApp") << "Function not found in plugins";
+        }
+    }
 }
 
 //--------------------------------------------------------------
 std::vector<std::string> ofApp::findPluginFiles() {
     std::vector<std::string> plugin_files;
     
-    // OpenFrameworks 데이터 폴더 경로 얻기
     std::string data_path = ofToDataPath("", true);  // absolute path
     
-    // 플러그인 디렉토리 경로 (data 폴더 내의 plugins 폴더)
     std::string plugins_dir = data_path + "/plugins/";
     
-    // 디렉토리가 존재하는지 확인
+    // check directory exists
     ofDirectory dir(plugins_dir);
     if (!dir.exists()) {
         ofLogWarning("ofApp") << "Plugins directory not found: " << plugins_dir;
         return plugin_files;
     }
-    
-    // *Plugin.so 패턴으로 파일 검색
-    dir.allowExt("so");
-    dir.listDir();
-    
-    for (int i = 0; i < dir.size(); i++) {
-        std::string filename = dir.getName(i);
-        if (filename.find("Plugin.so") != std::string::npos) {
-            std::string full_path = dir.getPath(i);
-            plugin_files.push_back(full_path);
-            ofLogNotice("ofApp") << "Found plugin: " << filename;
+
+
+
+    // iterate through sub directories
+    for (const auto& sub_dir : dir.getFiles()) {
+        if (sub_dir.isDirectory()) {
+            ofDirectory sub_directory(sub_dir.getAbsolutePath());
+            sub_directory.allowExt("so");
+            sub_directory.listDir();
+            for (int i = 0; i < sub_directory.size(); i++) {
+                plugin_files.push_back(sub_directory.getPath(i));
+            }
         }
     }
-    
+
     return plugin_files;
 }
 

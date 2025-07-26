@@ -2,7 +2,7 @@
 
 #include "ofMain.h"
 #include <memory>
-#include "plugin-system/PluginManager.h"
+#include "pluginSystem/PluginManager.h"
 
 // Forward declaration
 class PluginManager;
