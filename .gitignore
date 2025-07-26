@@ -17,3 +17,4 @@ docs/
 libs/plugin_sdk/
 .github
 plugin-dev-kit/generated/
+plugins/
