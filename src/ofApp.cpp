@@ -17,28 +17,9 @@ void ofApp::setup(){
     // Create plugin manager
     plugin_manager = std::make_unique<PluginManager>();
     
-    // Load plugins
-    if (plugin_manager->loadPlugin("./plugins/libTestShadersPlugin.so", "lygia")) {
-        std::cout << "Successfully loaded LYGIA plugin!" << std::endl;
-        
-        // Print loaded functions
-        auto functions = plugin_manager->getAllFunctions();
-        std::cout << "Total functions available: " << functions.size() << std::endl;
-        
-        // Show some examples
-        std::cout << "\nExample functions:" << std::endl;
-        for (int i = 0; i < std::min(10, (int)functions.size()); i++) {
-            std::cout << "- " << functions[i] << std::endl;
-        }
-        
-        // Test function search
-        if (const GLSLFunction* func = plugin_manager->findFunction("gaussianBlur")) {
-            std::cout << "\nFound gaussianBlur function in: " << func->filePath << std::endl;
-            std::cout << "Overloads: " << func->overloads.size() << std::endl;
-        }
-    } else {
-        std::cout << "Failed to load LYGIA plugin" << std::endl;
-    }
+    loadAllPlugins();
+
+    displayPluginInfo();
 }
 
 //--------------------------------------------------------------
@@ -51,11 +32,26 @@ void ofApp::draw(){
     // Display some information on screen
     ofDrawBitmapString("GLSL Plugin System Demo", 20, 30);
     ofDrawBitmapString("Press keys:", 20, 60);
-    ofDrawBitmapString("1 - Load additional plugin", 20, 80);
-    ofDrawBitmapString("2 - Unload LYGIA plugin", 20, 100);
-    ofDrawBitmapString("l - List loaded plugins", 20, 120);
-    ofDrawBitmapString("f - Find lighting functions", 20, 140);
-    ofDrawBitmapString("s - Show statistics", 20, 160);
+    ofDrawBitmapString("r - Unload and reload all plugins", 20, 80);
+    ofDrawBitmapString("l - display plugin info", 20, 100);
+    ofDrawBitmapString("f - list all functions in the first plugin", 20, 120);
+
+
+    int y_offset = 200;
+    ofDrawBitmapString("Loaded Plugins:", 20, y_offset);
+    y_offset += 20;
+    
+    for (const auto& plugin_name : loaded_plugin_names) {
+        auto it = plugin_functions.find(plugin_name);
+        if (it != plugin_functions.end()) {
+            std::string info = plugin_name + " (" + ofToString(it->second.size()) + " functions)";
+            ofDrawBitmapString("- " + info, 20, y_offset);
+            y_offset += 15;
+        }
+    }
+    
+    ofDrawBitmapString("Press 'r' to reload plugins", 20, y_offset + 20);
+    ofDrawBitmapString("Press 'f' to list all functions", 20, y_offset + 35);
 }
 
 //--------------------------------------------------------------
@@ -68,42 +64,27 @@ void ofApp::keyPressed(int key){
     if (!plugin_manager) return;
     
     switch(key) {
-        case '1':
-            // Load another plugin (this would fail since we don't have it)
-            plugin_manager->loadPlugin("./plugins/libCustomPlugin.so", "custom");
-            break;
-        case '2':
-            // Unload plugin
-            plugin_manager->unloadPlugin("lygia");
-            std::cout << "Unloaded LYGIA plugin" << std::endl;
+        case 'r':
+            // 플러그인 새로고침
+            plugin_manager->unloadAllPlugins();
+            loaded_plugin_names.clear();
+            plugin_functions.clear();
+            loadAllPlugins();
+            displayPluginInfo();
             break;
         case 'l':
-            // List loaded plugins
-            {
-                auto loaded = plugin_manager->getLoadedPlugins();
-                std::cout << "\nLoaded plugins:" << std::endl;
-                for (const auto& plugin : loaded) {
-                    std::cout << "- " << plugin << std::endl;
-                }
-            }
+            // 로드된 플러그인 목록
+            displayPluginInfo();
             break;
         case 'f':
-            // Find functions by category
-            {
-                auto lighting_funcs = plugin_manager->findFunctionsByCategory("lighting");
-                std::cout << "\nLighting functions: " << lighting_funcs.size() << std::endl;
-                for (int i = 0; i < std::min(5, (int)lighting_funcs.size()); i++) {
-                    std::cout << "- " << lighting_funcs[i]->name << std::endl;
-                }
-            }
-            break;
-        case 's':
-            // Show statistics
-            {
-                auto stats = plugin_manager->getPluginStatistics();
-                std::cout << "\nPlugin statistics:" << std::endl;
-                for (const auto& [name, count] : stats) {
-                    std::cout << "- " << name << ": " << count << " functions" << std::endl;
+            // 특정 플러그인의 모든 함수 출력
+            if (!loaded_plugin_names.empty()) {
+                std::string plugin_name = loaded_plugin_names[0]; // 첫 번째 플러그인
+                if (plugin_functions.count(plugin_name)) {
+                    ofLogNotice("ofApp") << "All functions in " << plugin_name << ":";
+                    for (const auto& func : plugin_functions[plugin_name]) {
+                        ofLogNotice("ofApp") << "  - " << func;
+                    }
                 }
             }
             break;
@@ -111,51 +92,101 @@ void ofApp::keyPressed(int key){
 }
 
 //--------------------------------------------------------------
-void ofApp::keyReleased(int key){
-
+std::vector<std::string> ofApp::findPluginFiles() {
+    std::vector<std::string> plugin_files;
+    
+    // OpenFrameworks 데이터 폴더 경로 얻기
+    std::string data_path = ofToDataPath("", true);  // absolute path
+    
+    // 플러그인 디렉토리 경로 (data 폴더 내의 plugins 폴더)
+    std::string plugins_dir = data_path + "/plugins/";
+    
+    // 디렉토리가 존재하는지 확인
+    ofDirectory dir(plugins_dir);
+    if (!dir.exists()) {
+        ofLogWarning("ofApp") << "Plugins directory not found: " << plugins_dir;
+        return plugin_files;
+    }
+    
+    // *Plugin.so 패턴으로 파일 검색
+    dir.allowExt("so");
+    dir.listDir();
+    
+    for (int i = 0; i < dir.size(); i++) {
+        std::string filename = dir.getName(i);
+        // "Plugin.so"로 끝나는 파일만 선택
+        if (filename.find("Plugin.so") != std::string::npos) {
+            std::string full_path = dir.getPath(i);
+            plugin_files.push_back(full_path);
+            ofLogNotice("ofApp") << "Found plugin: " << filename;
+        }
+    }
+    
+    return plugin_files;
 }
 
 //--------------------------------------------------------------
-void ofApp::mouseMoved(int x, int y ){
-
+void ofApp::loadAllPlugins() {
+    auto plugin_files = findPluginFiles();
+    
+    if (plugin_files.empty()) {
+        ofLogWarning("ofApp") << "No plugin files found";
+        return;
+    }
+    
+    for (const auto& plugin_path : plugin_files) {
+        // 파일명에서 플러그인 이름 추출 (경로와 확장자 제거)
+        std::string filename = ofFilePath::getFileName(plugin_path);
+        std::string plugin_name = filename;
+        
+        // "lib" 접두사 제거
+        if (plugin_name.substr(0, 3) == "lib") {
+            plugin_name = plugin_name.substr(3);
+        }
+        
+        // ".so" 확장자 제거
+        size_t pos = plugin_name.find(".so");
+        if (pos != std::string::npos) {
+            plugin_name = plugin_name.substr(0, pos);
+        }
+        
+        // 플러그인 로드 시도
+        if (plugin_manager->loadPlugin(plugin_path, plugin_name)) {
+            loaded_plugin_names.push_back(plugin_name);
+            
+            // 플러그인의 함수 목록 수집
+            auto functions = plugin_manager->getAllFunctions();
+            plugin_functions[plugin_name] = functions;
+            
+            ofLogNotice("ofApp") << "Successfully loaded plugin: " << plugin_name 
+                                << " with " << functions.size() << " functions";
+        } else {
+            ofLogError("ofApp") << "Failed to load plugin: " << plugin_path;
+        }
+    }
 }
-
 //--------------------------------------------------------------
-void ofApp::mouseDragged(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mousePressed(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseReleased(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseEntered(int x, int y){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseExited(int x, int y){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::windowResized(int w, int h){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::gotMessage(ofMessage msg){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::dragEvent(ofDragInfo dragInfo){ 
-
+void ofApp::displayPluginInfo() {
+    ofLogNotice("ofApp") << "=== Loaded Plugins Summary ===";
+    ofLogNotice("ofApp") << "Total plugins loaded: " << loaded_plugin_names.size();
+    
+    for (const auto& plugin_name : loaded_plugin_names) {
+        auto stats = plugin_manager->getPluginStatistics();
+        auto it = stats.find(plugin_name);
+        if (it != stats.end()) {
+            ofLogNotice("ofApp") << "Plugin: " << plugin_name << " - " << it->second << " functions";
+        }
+        
+        // 처음 10개 함수만 예시로 출력
+        if (plugin_functions.count(plugin_name)) {
+            const auto& functions = plugin_functions[plugin_name];
+            ofLogNotice("ofApp") << "Sample functions from " << plugin_name << ":";
+            for (int i = 0; i < std::min(10, (int)functions.size()); i++) {
+                ofLogNotice("ofApp") << "  - " << functions[i];
+            }
+            if (functions.size() > 10) {
+                ofLogNotice("ofApp") << "  ... and " << (functions.size() - 10) << " more";
+            }
+        }
+    }
 }

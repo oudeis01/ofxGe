@@ -10,6 +10,8 @@ class PluginManager;
 class ofApp : public ofBaseApp{
 private:
     std::unique_ptr<PluginManager> plugin_manager;
+    std::vector<std::string> loaded_plugin_names;
+    std::map<std::string, std::vector<std::string>> plugin_functions;
 
 public:
     ofApp();
@@ -19,16 +21,11 @@ public:
     void update() override;
     void draw() override;
     void exit() override;
-
     void keyPressed(int key) override;
-    void keyReleased(int key) override;
-    void mouseMoved(int x, int y) override;
-    void mouseDragged(int x, int y, int button) override;
-    void mousePressed(int x, int y, int button) override;
-    void mouseReleased(int x, int y, int button) override;
-    void mouseEntered(int x, int y) override;
-    void mouseExited(int x, int y) override;
-    void windowResized(int w, int h) override;
-    void gotMessage(ofMessage msg) override;
-    void dragEvent(ofDragInfo dragInfo) override;
+
+
+private:
+    void loadAllPlugins();
+    void displayPluginInfo();
+    std::vector<std::string> findPluginFiles();
 };
