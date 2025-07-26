@@ -29,7 +29,6 @@ void ofApp::update(){
 
 //--------------------------------------------------------------
 void ofApp::draw(){
-    // Display some information on screen
     ofDrawBitmapString("GLSL Plugin System Demo", 20, 30);
     ofDrawBitmapString("Press keys:", 20, 60);
     ofDrawBitmapString("r - Unload and reload all plugins", 20, 80);
@@ -114,7 +113,6 @@ std::vector<std::string> ofApp::findPluginFiles() {
     
     for (int i = 0; i < dir.size(); i++) {
         std::string filename = dir.getName(i);
-        // "Plugin.so"로 끝나는 파일만 선택
         if (filename.find("Plugin.so") != std::string::npos) {
             std::string full_path = dir.getPath(i);
             plugin_files.push_back(full_path);
@@ -135,26 +133,26 @@ void ofApp::loadAllPlugins() {
     }
     
     for (const auto& plugin_path : plugin_files) {
-        // 파일명에서 플러그인 이름 추출 (경로와 확장자 제거)
+        // get only the filename without path
         std::string filename = ofFilePath::getFileName(plugin_path);
         std::string plugin_name = filename;
         
-        // "lib" 접두사 제거
+        // remove "lib" prefix
         if (plugin_name.substr(0, 3) == "lib") {
             plugin_name = plugin_name.substr(3);
         }
         
-        // ".so" 확장자 제거
+        // remove ".so" suffix
         size_t pos = plugin_name.find(".so");
         if (pos != std::string::npos) {
             plugin_name = plugin_name.substr(0, pos);
         }
         
-        // 플러그인 로드 시도
+        // try to load the plugin
         if (plugin_manager->loadPlugin(plugin_path, plugin_name)) {
             loaded_plugin_names.push_back(plugin_name);
             
-            // 플러그인의 함수 목록 수집
+            // get functions from the plugin
             auto functions = plugin_manager->getAllFunctions();
             plugin_functions[plugin_name] = functions;
             

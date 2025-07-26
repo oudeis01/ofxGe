@@ -3,14 +3,14 @@
 #include <algorithm>
 
 bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string& alias) {
-    // 1. 동적 라이브러리 로드
+    // load the dynamic library
     void* handle = dlopen(plugin_path.c_str(), RTLD_LAZY);
     if (!handle) {
         std::cerr << "Cannot load plugin: " << dlerror() << std::endl;
         return false;
     }
-    
-    // 2. ABI 버전 확인
+
+    // Check ABI version
     typedef int (*get_abi_version_t)();
     get_abi_version_t get_abi_version = (get_abi_version_t) dlsym(handle, "getPluginABIVersion");
     if (get_abi_version) {
