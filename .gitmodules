@@ -1,0 +1,6 @@
+[submodule "glsl-plugin-interface"]
+	path = glsl-plugin-interface
+	url = https://github.com/oudeis01/glsl-plugin-interface.git
+[submodule "glsl-plugin-dev-kit"]
+	path = glsl-plugin-dev-kit
+	url = https://github.com/oudeis01/glsl-plugin-dev-kit
