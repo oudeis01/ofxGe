@@ -131,6 +131,22 @@ std::map<std::string, std::vector<std::string>> PluginManager::getFunctionsByPlu
     return result;
 }
 
+std::map<std::string, PluginInfo> PluginManager::getPluginInfos() const {
+    std::map<std::string, PluginInfo> result;
+    for (const auto& [alias, plugin] : loaded_plugins) {
+        result[alias] = plugin->interface->getPluginInfo();
+    }
+    return result;
+}
+
+std::map<std::string, std::string> PluginManager::getPluginPaths() const {
+    std::map<std::string, std::string> result;
+    for (const auto& [alias, plugin] : loaded_plugins) {
+        result[alias] = plugin->interface->getPath();
+    }
+    return result;
+}
+
 std::vector<const GLSLFunction*> PluginManager::findFunctionsByCategory(const std::string& category) {
     std::vector<const GLSLFunction*> result;
     for (const auto& [alias, plugin] : loaded_plugins) {

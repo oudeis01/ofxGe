@@ -91,6 +91,10 @@ void ofApp::keyPressed(int key){
     }
 
     if(key == 's'){
+        
+        IPluginInterface* plugin = plugin_manager->getPlugin("LygiaPlugin");
+        
+        plugin->getName();
         const GLSLFunction* function_metadata = plugin_manager->findFunction("LygiaPlugin", "snoise");
         if (function_metadata) {
             ofLogNotice("ofApp") << "Found function: " << function_metadata->name 
@@ -183,6 +187,7 @@ void ofApp::displayPluginInfo() {
     ofLogNotice("ofApp") << "=== Loaded Plugins Summary ===";
     ofLogNotice("ofApp") << "Total plugins loaded: " << loaded_plugin_names.size();
     
+    // 기본 정보 출력 (안전한 메서드들만 사용)
     for (const auto& plugin_name : loaded_plugin_names) {
         auto stats = plugin_manager->getPluginStatistics();
         auto it = stats.find(plugin_name);

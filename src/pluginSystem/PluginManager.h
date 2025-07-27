@@ -61,6 +61,8 @@ public:
     std::vector<std::string> getLoadedPlugins() const;
     std::vector<std::string> getAllFunctions() const;
     std::map<std::string, std::vector<std::string>> getFunctionsByPlugin() const;
+    std::map<std::string, PluginInfo> getPluginInfos() const;
+    std::map<std::string, std::string> getPluginPaths() const;
     
     // Advanced queries
     std::vector<const GLSLFunction*> findFunctionsByCategory(const std::string& category);
