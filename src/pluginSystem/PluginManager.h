@@ -72,4 +72,8 @@ public:
     // Plugin access
     IPluginInterface* getPlugin(const std::string& alias);
     const IPluginInterface* getPlugin(const std::string& alias) const;
+    
+private:
+    // Helper function to extract plugin directory from .so file path
+    std::string extractPluginDirectory(const std::string& plugin_lib_path) const;
 };

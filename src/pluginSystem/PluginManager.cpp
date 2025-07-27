@@ -1,6 +1,7 @@
 #include "PluginManager.h"
 #include <iostream>
 #include <algorithm>
+#include <string>
 
 bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string& alias) {
     // load the dynamic library
@@ -43,6 +44,12 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
         dlclose(handle);
         return false;
     }
+    
+    // 플러그인 데이터 디렉토리 경로 설정
+    std::string plugin_data_dir = extractPluginDirectory(plugin_path);
+    std::cout << "[PluginManager] Setting plugin data path: " << plugin_data_dir << std::endl;
+    plugin->setPath(plugin_data_dir);
+    std::cout << "[PluginManager] Plugin path set successfully" << std::endl;
     
     // 5. 등록
     std::string plugin_alias = alias.empty() ? plugin->getName() : alias;
@@ -185,4 +192,17 @@ IPluginInterface* PluginManager::getPlugin(const std::string& alias) {
 const IPluginInterface* PluginManager::getPlugin(const std::string& alias) const {
     auto it = loaded_plugins.find(alias);
     return (it != loaded_plugins.end()) ? it->second->interface : nullptr;
+}
+
+std::string PluginManager::extractPluginDirectory(const std::string& plugin_lib_path) const {
+    // plugin_lib_path 예시: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.so"
+    // 반환값: "/path/to/bin/data/plugins/lygia-plugin/"
+    
+    size_t last_slash = plugin_lib_path.find_last_of('/');
+    if (last_slash != std::string::npos) {
+        return plugin_lib_path.substr(0, last_slash + 1); // '/' 포함
+    }
+    
+    // 슬래시를 찾을 수 없는 경우 현재 디렉토리
+    return "./";
 }

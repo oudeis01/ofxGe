@@ -24,8 +24,7 @@ void ofApp::setup(){
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    ofShader s;
-    s.load("shaders/noise");
+
 }
 
 //--------------------------------------------------------------
@@ -91,10 +90,6 @@ void ofApp::keyPressed(int key){
     }
 
     if(key == 's'){
-        
-        IPluginInterface* plugin = plugin_manager->getPlugin("LygiaPlugin");
-        
-        plugin->getName();
         const GLSLFunction* function_metadata = plugin_manager->findFunction("LygiaPlugin", "snoise");
         if (function_metadata) {
             ofLogNotice("ofApp") << "Found function: " << function_metadata->name 
@@ -186,7 +181,10 @@ void ofApp::loadAllPlugins() {
 void ofApp::displayPluginInfo() {
     ofLogNotice("ofApp") << "=== Loaded Plugins Summary ===";
     ofLogNotice("ofApp") << "Total plugins loaded: " << loaded_plugin_names.size();
-    
+    std::map<std::string, std::string> plugin_paths = plugin_manager->getPluginPaths();
+    for(auto & [plugin_name, path] : plugin_paths) {
+        ofLogNotice("ofApp") << "Plugin: " << plugin_name << " at path: " << path;
+    }
     // 기본 정보 출력 (안전한 메서드들만 사용)
     for (const auto& plugin_name : loaded_plugin_names) {
         auto stats = plugin_manager->getPluginStatistics();
