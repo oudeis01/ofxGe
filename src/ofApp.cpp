@@ -4,7 +4,7 @@
 
 //--------------------------------------------------------------
 ofApp::ofApp() {
-    // Constructor - plugin_manager will be initialized in setup()
+    // Constructor - managers will be initialized in setup()
 }
 
 //--------------------------------------------------------------
@@ -14,17 +14,33 @@ ofApp::~ofApp() {
 
 //--------------------------------------------------------------
 void ofApp::setup(){
+    ofDisableArbTex();
+    ofSetFrameRate(60);
+    ofSetVerticalSync(false);
+    ofBackground(0,0,0);
+
     // Create plugin manager
     plugin_manager = std::make_unique<PluginManager>();
     
     loadAllPlugins();
-
     displayPluginInfo();
+    
+    // Initialize shader system
+    initializeShaderSystem();
+
+    width = ofGetWidth();
+    height = ofGetHeight();
+    plane.set(width, height, 4, 4);
+    plane.setPosition(width/2, height/2, 0);
+    plane.mapTexCoords(0,0,1,1);
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
-
+    // Update shader uniforms if we have a current shader
+    if (current_shader && current_shader->isReady()) {
+        updateShaderUniforms();
+    }
 }
 
 //--------------------------------------------------------------
@@ -34,6 +50,8 @@ void ofApp::draw(){
     ofDrawBitmapString("r - Unload and reload all plugins", 20, 80);
     ofDrawBitmapString("l - display plugin info", 20, 100);
     ofDrawBitmapString("f - list all functions in the first plugin", 20, 120);
+    ofDrawBitmapString("t - test shader creation (snoise)", 20, 140);
+    ofDrawBitmapString("c - clear current shader", 20, 160);
 
 
     int y_offset = 200;
@@ -47,6 +65,32 @@ void ofApp::draw(){
             ofDrawBitmapString("- " + info, 20, y_offset);
             y_offset += 15;
         }
+    }
+
+    // Shader status
+    y_offset += 40;
+    if (current_shader) {
+        ofDrawBitmapString("Current Shader:", 20, y_offset);
+        y_offset += 15;
+        std::string status = "Function: " + current_shader->function_name + " | Status: " + current_shader->getStatusString();
+        ofDrawBitmapString("  " + status, 20, y_offset);
+        y_offset += 20;
+        
+        // Render shader if ready
+        static bool printed_ready = false;
+        if (current_shader->isReady()) {
+            if(!printed_ready) {
+                std::cout << "Shader is ready to use." << std::endl;
+                printed_ready = true;
+            }
+            current_shader->compiled_shader.begin();
+            current_shader->updateAutoUniforms(); // 자동 유니폼 시스템 사용
+            plane.draw();
+            current_shader->compiled_shader.end();
+        }
+    } else {
+        ofDrawBitmapString("No shader loaded", 20, y_offset);
+        y_offset += 20;
     }
     
     ofDrawBitmapString("Press 'r' to reload plugins", 20, y_offset + 20);
@@ -86,6 +130,15 @@ void ofApp::keyPressed(int key){
                     }
                 }
             }
+            break;
+        case 't':
+            // 셰이더 생성 테스트
+            testShaderCreation();
+            break;
+        case 'c':
+            // 현재 셰이더 클리어
+            current_shader.reset();
+            ofLogNotice("ofApp") << "Current shader cleared";
             break;
     }
 
@@ -128,7 +181,7 @@ std::vector<std::string> ofApp::findPluginFiles() {
             ofDirectory sub_directory(sub_dir.getAbsolutePath());
             sub_directory.allowExt("so");
             sub_directory.listDir();
-            for (int i = 0; i < sub_directory.size(); i++) {
+            for (size_t i = 0; i < sub_directory.size(); i++) {
                 plugin_files.push_back(sub_directory.getPath(i));
             }
         }
@@ -205,4 +258,60 @@ void ofApp::displayPluginInfo() {
             }
         }
     }
+}
+
+//--------------------------------------------------------------
+void ofApp::initializeShaderSystem() {
+    if (!plugin_manager) {
+        ofLogError("ofApp") << "Cannot initialize shader system: PluginManager is null";
+        return;
+    }
+    
+    // Create shader manager
+    shader_manager = std::make_unique<ShaderManager>(plugin_manager.get());
+    
+    // Setup rendering objects
+    plane.set(400, 400);  // 400x400 plane
+    plane.setResolution(2, 2);
+    
+    ofLogNotice("ofApp") << "Shader system initialized";
+}
+
+//--------------------------------------------------------------
+void ofApp::testShaderCreation() {
+    if (!shader_manager) {
+        ofLogError("ofApp") << "Shader manager not initialized";
+        return;
+    }
+    
+    ofLogNotice("ofApp") << "Testing shader creation with snoise function...";
+    
+    // Test with snoise function
+    std::vector<std::string> arguments = {"st", "time"};
+    current_shader = shader_manager->createShader("snoise", arguments);
+    
+    if (current_shader) {
+        if (current_shader->isReady()) {
+            ofLogNotice("ofApp") << "Shader created and compiled successfully!";
+        } else if (current_shader->has_error) {
+            ofLogError("ofApp") << "Shader creation failed: " << current_shader->error_message;
+        } else {
+            ofLogWarning("ofApp") << "Shader created but not ready yet";
+        }
+        
+        // Print debug info
+        current_shader->printDebugInfo();
+    } else {
+        ofLogError("ofApp") << "Failed to create shader";
+    }
+}
+
+//--------------------------------------------------------------
+void ofApp::updateShaderUniforms() {
+    if (!current_shader || !current_shader->isReady()) {
+        return;
+    }
+    
+    // Use auto uniform system instead of manual setting
+    current_shader->updateAutoUniforms();
 }
