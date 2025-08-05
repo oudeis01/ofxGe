@@ -133,6 +133,7 @@ void ofApp::keyPressed(int key){
             break;
         case 't':
             // 셰이더 생성 테스트
+            shader_manager->setDebugMode(true);
             testShaderCreation();
             break;
         case 'c':
@@ -286,15 +287,16 @@ void ofApp::testShaderCreation() {
     
     ofLogNotice("ofApp") << "Testing shader creation with snoise function...";
     
-    // Test with snoise function
-    std::vector<std::string> arguments = {"st", "time"};
-    current_shader = shader_manager->createShader("snoise", arguments);
+    // Test with snoise function - test valid arguments
+    std::vector<std::string> arguments = {"st", "time"}; // 모두 유효한 인자들
+    current_shader = shader_manager->createShader("worley", arguments);
     
     if (current_shader) {
         if (current_shader->isReady()) {
             ofLogNotice("ofApp") << "Shader created and compiled successfully!";
         } else if (current_shader->has_error) {
             ofLogError("ofApp") << "Shader creation failed: " << current_shader->error_message;
+            std::cout << "fragment shader code: " << current_shader->fragment_shader_code << std::endl;
         } else {
             ofLogWarning("ofApp") << "Shader created but not ready yet";
         }

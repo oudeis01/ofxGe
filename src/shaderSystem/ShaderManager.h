@@ -1,5 +1,6 @@
 #pragma once
 #include "ShaderNode.h"
+#include "BuiltinVariables.h"
 #include "../pluginSystem/PluginManager.h"
 #include "ofMain.h"
 #include <unordered_map>
@@ -85,6 +86,12 @@ public:
     
     // 캐시 키 생성
     std::string generateCacheKey(const std::string& function_name, const std::vector<std::string>& arguments);
+    
+    // 리터럴 상수 판별
+    bool isFloatLiteral(const std::string& str);
+    
+    // 인자들이 벡터로 결합 가능한지 확인
+    bool canCombineToVector(const std::vector<std::string>& arguments, const std::string& target_type);
     
     // === 디버깅 및 정보 ===
     // 캐시 상태 출력
