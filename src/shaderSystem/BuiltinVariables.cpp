@@ -13,43 +13,43 @@ BuiltinVariables::BuiltinVariables() {
 
 //--------------------------------------------------------------
 void BuiltinVariables::initializeBuiltins() {
-    // st: 화면 좌표 (0.0~1.0)
+    // 'st': Normalized screen coordinates (0.0 to 1.0)
     builtins["st"] = BuiltinVariable(
         "st", 
         "vec2", 
-        2,           // 2개 성분
-        true,        // resolution uniform 필요
-        true,        // 메인함수에서 선언 필요
+        2,           // 2 components (x, y)
+        true,        // requires 'resolution' uniform
+        true,        // needs declaration in main()
         "vec2 st = gl_FragCoord.xy / resolution;"
     );
     
-    // time: 경과 시간
+    // 'time': Elapsed time in seconds
     builtins["time"] = BuiltinVariable(
         "time",
         "float",
-        1,           // 1개 성분
-        true,        // time uniform 필요
-        false,       // 선언 불필요 (직접 uniform 사용)
+        1,           // 1 component
+        true,        // requires 'time' uniform
+        false,       // no local declaration needed, use uniform directly
         ""
     );
     
-    // resolution: 화면 해상도
+    // 'resolution': The dimensions of the viewport in pixels
     builtins["resolution"] = BuiltinVariable(
         "resolution",
         "vec2",
-        2,           // 2개 성분
-        true,        // resolution uniform 필요
-        false,       // 선언 불필요 (직접 uniform 사용)
+        2,           // 2 components (width, height)
+        true,        // requires 'resolution' uniform
+        false,       // no local declaration needed, use uniform directly
         ""
     );
     
-    // gl_FragCoord: GLSL 내장 변수
+    // 'gl_FragCoord': Fragment coordinates in window space (a standard GLSL built-in)
     builtins["gl_FragCoord"] = BuiltinVariable(
         "gl_FragCoord",
         "vec4",
-        4,           // 4개 성분
-        false,       // uniform 불필요 (GLSL 내장)
-        false,       // 선언 불필요 (GLSL 내장)
+        4,           // 4 components (x, y, z, w)
+        false,       // no uniform needed
+        false,       // no declaration needed
         ""
     );
 }
@@ -99,12 +99,12 @@ std::set<std::string> BuiltinVariables::getAllBuiltinNames() const {
 
 //--------------------------------------------------------------
 bool BuiltinVariables::isValidSwizzle(const std::string& variable, std::string& errorMessage) const {
-    // 리터럴 값은 항상 유효
+    // A float literal is always considered valid.
     if (isFloatLiteral(variable)) {
         return true;
     }
     
-    // swizzle이 없는 경우 항상 유효
+    // If there's no swizzle, it's valid by default in this context.
     if (!hasSwizzle(variable)) {
         return true;
     }
@@ -112,14 +112,14 @@ bool BuiltinVariables::isValidSwizzle(const std::string& variable, std::string& 
     std::string baseVar = extractBaseVariable(variable);
     std::string swizzle = extractSwizzle(variable);
     
-    // 기본 변수가 builtin인지 확인
+    // Check if the base variable is a known built-in.
     const BuiltinVariable* info = getBuiltinInfo(baseVar);
     if (!info) {
         errorMessage = "Unknown variable '" + baseVar + "'";
         return false;
     }
     
-    // swizzle 성분들이 유효한지 확인
+    // Check if the swizzle characters are valid for the base variable's type.
     std::string validComponents = getSupportedSwizzleComponents(baseVar);
     
     for (char c : swizzle) {
@@ -139,12 +139,12 @@ std::string BuiltinVariables::getSupportedSwizzleComponents(const std::string& b
     const BuiltinVariable* info = getBuiltinInfo(baseVariable);
     if (!info) return "";
     
-    // component_count에 따라 지원하는 성분 반환
+    // Return valid swizzle characters based on the number of components.
     switch (info->component_count) {
-        case 1: return "x";           // float: x
-        case 2: return "xy";          // vec2: x, y
-        case 3: return "xyz";         // vec3: x, y, z
-        case 4: return "xyzw";        // vec4: x, y, z, w
+        case 1: return "x";      // float: .x
+        case 2: return "xy";     // vec2: .x, .y
+        case 3: return "xyz";    // vec3: .x, .y, .z
+        case 4: return "xyzw";   // vec4: .x, .y, .z, .w
         default: return "";
     }
 }
@@ -173,16 +173,15 @@ std::string BuiltinVariables::formatSupportedComponents(const std::string& glslT
 
 //--------------------------------------------------------------
 bool BuiltinVariables::isFloatLiteral(const std::string& str) const {
-    // 숫자로만 구성되어 있거나 소수점이 포함된 경우 리터럴로 판단
     if (str.empty()) return false;
 
     bool has_dot = false;
     for (char c : str) {
         if (c == '.') {
-            if (has_dot) return false; // 소수점이 두 번 나오면 안됨
+            if (has_dot) return false; // A maximum of one decimal point is allowed.
             has_dot = true;
         } else if (!std::isdigit(c)) {
-            return false; // 숫자가 아닌 문자가 있으면 안됨
+            return false; // Must contain only digits and an optional decimal point.
         }
     }
     return true;

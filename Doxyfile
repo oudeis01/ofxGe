@@ -1,0 +1,28 @@
+# Doxyfile configuration for the Graphics Engine project
+
+# --- Project Details ---
+PROJECT_NAME           = "Graphics Engine"
+PROJECT_BRIEF          = "A modular GLSL shader engine with a dynamic plugin system."
+OUTPUT_DIRECTORY       = ./doxygen-docs
+
+# --- Source Code Location ---
+INPUT                  = ./src ./glsl-plugin-interface/include
+RECURSIVE              = YES
+
+# --- Documentation Extraction Settings ---
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+# --- Output Format ---
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# --- Diagram Generation (requires Graphviz/dot) ---
+HAVE_DOT               = YES
+CLASS_DIAGRAMS         = YES
+UML_LOOK               = YES
+UML_LIMIT_NUM_FIELDS   = 10
+TEMPLATE_RELATIONS     = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES

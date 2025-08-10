@@ -2,27 +2,16 @@
 
 #include "ofMain.h"
 #include <memory>
-#include "pluginSystem/PluginManager.h"
-#include "shaderSystem/ShaderManager.h"
-#include "shaderSystem/ShaderNode.h"
+#include "geMain.h"
 
-// Forward declarations
-class PluginManager;
-class ShaderManager;
-
+/**
+ * @class ofApp
+ * @brief The main openFrameworks application class.
+ * @details This class sets up the application window and graphics context.
+ *          It owns the `graphicsEngine` instance and handles the main
+ *          update and draw loops, delegating core logic to the engine.
+ */
 class ofApp : public ofBaseApp{
-private:
-    // Plugin system
-    std::unique_ptr<PluginManager> plugin_manager;
-    std::vector<std::string> loaded_plugin_names;
-    std::map<std::string, std::vector<std::string>> plugin_functions;
-    
-    // Shader system
-    std::unique_ptr<ShaderManager> shader_manager;
-    std::shared_ptr<ShaderNode> current_shader;
-    
-    // Rendering objects
-    ofPlanePrimitive plane;
 
 public:
     ofApp();
@@ -34,18 +23,8 @@ public:
     void exit() override;
     void keyPressed(int key) override;
 
-    float width, height;
+    float width, height; ///< The width and height of the application window.
+    ofPlanePrimitive plane; ///< A 3D plane used as a canvas for rendering shaders.
+    graphicsEngine ge; ///< The main graphics engine instance.
 
-
-
-private:
-    // Plugin system methods
-    void loadAllPlugins();
-    void displayPluginInfo();
-    std::vector<std::string> findPluginFiles();
-    
-    // Shader system methods
-    void initializeShaderSystem();
-    void testShaderCreation();
-    void updateShaderUniforms();
 };

@@ -26,12 +26,13 @@ bool ShaderNode::compile() {
     }
     
     try {
-        // 기존 셰이더 정리
+        // Clean up any previously loaded shader.
         if (compiled_shader.isLoaded()) {
             compiled_shader.unload();
         }
         
-        // 셰이더 컴파일 (소스 디렉토리 경로 포함하여 include 해결)
+        // Setup the shader from source. Providing the source directory path allows
+        // ofShader to correctly handle #include directives with relative paths.
         bool success = compiled_shader.setupShaderFromSource(GL_VERTEX_SHADER, vertex_shader_code, source_directory_path) &&
                        compiled_shader.setupShaderFromSource(GL_FRAGMENT_SHADER, fragment_shader_code, source_directory_path) &&
                        compiled_shader.linkProgram();
@@ -140,36 +141,36 @@ void ShaderNode::setAutoUpdateResolution(bool enable) {
 
 //--------------------------------------------------------------
 void ShaderNode::updateUniforms() {
-    if (!is_compiled || !compiled_shader.isLoaded()) {
+    if (!isReady()) {
         return;
     }
     
-    // float 유니폼들 업데이트
+    // Update all user-defined float uniforms.
     for (const auto& [name, value] : float_uniforms) {
         compiled_shader.setUniform1f(name, value);
     }
     
-    // vec2 유니폼들 업데이트
+    // Update all user-defined vec2 uniforms.
     for (const auto& [name, value] : vec2_uniforms) {
         compiled_shader.setUniform2f(name, value.x, value.y);
     }
     
-    // 자동 유니폼들 업데이트
+    // Update any automatic uniforms as well.
     updateAutoUniforms();
 }
 
 //--------------------------------------------------------------
 void ShaderNode::updateAutoUniforms() {
-    if (!is_compiled || !compiled_shader.isLoaded()) {
+    if (!isReady()) {
         return;
     }
     
-    // 시간 유니폼 자동 업데이트
+    // Update the time uniform if enabled.
     if (auto_update_time) {
         compiled_shader.setUniform1f("time", ofGetElapsedTimef());
     }
     
-    // 해상도 유니폼 자동 업데이트
+    // Update the resolution uniform if enabled.
     if (auto_update_resolution) {
         compiled_shader.setUniform2f("resolution", ofGetWidth(), ofGetHeight());
     }

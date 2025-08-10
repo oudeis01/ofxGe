@@ -4,14 +4,14 @@
 #include <string>
 
 bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string& alias) {
-    // load the dynamic library
+    // Load the dynamic library using dlopen. RTLD_LAZY resolves symbols as code is executed.
     void* handle = dlopen(plugin_path.c_str(), RTLD_LAZY);
     if (!handle) {
         std::cerr << "Cannot load plugin: " << dlerror() << std::endl;
         return false;
     }
 
-    // Check ABI version
+    // Check for ABI version compatibility between the manager and the plugin.
     typedef int (*get_abi_version_t)();
     get_abi_version_t get_abi_version = (get_abi_version_t) dlsym(handle, "getPluginABIVersion");
     if (get_abi_version) {
@@ -24,7 +24,7 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
         }
     }
     
-    // 3. 심볼 검색
+    // Look for the required factory and info functions in the library.
     typedef IPluginInterface* (*create_plugin_t)();
     typedef const char* (*get_info_t)();
     
@@ -32,12 +32,12 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
     get_info_t get_info = (get_info_t) dlsym(handle, "getPluginInfo");
     
     if (!create_plugin || !get_info) {
-        std::cerr << "Invalid plugin format: missing required symbols" << std::endl;
+        std::cerr << "Invalid plugin format: missing required symbols (createPlugin or getPluginInfo)" << std::endl;
         dlclose(handle);
         return false;
     }
     
-    // 4. 플러그인 인스턴스 생성
+    // Create an instance of the plugin.
     IPluginInterface* plugin = create_plugin();
     if (!plugin) {
         std::cerr << "Failed to create plugin instance" << std::endl;
@@ -45,18 +45,17 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
         return false;
     }
     
-    // 플러그인 데이터 디렉토리 경로 설정
+    // Set the plugin's data directory path so it can find its own resources.
     std::string plugin_data_dir = extractPluginDirectory(plugin_path);
     std::cout << "[PluginManager] Setting plugin data path: " << plugin_data_dir << std::endl;
     plugin->setPath(plugin_data_dir);
-    std::cout << "[PluginManager] Plugin path set successfully" << std::endl;
     
-    // 5. 등록
+    // Determine the alias for the plugin.
     std::string plugin_alias = alias.empty() ? plugin->getName() : alias;
     
-    // 이미 로드된 플러그인인지 확인
+    // Prevent loading a plugin with an alias that is already in use.
     if (loaded_plugins.find(plugin_alias) != loaded_plugins.end()) {
-        std::cerr << "Plugin with alias '" << plugin_alias << "' already loaded" << std::endl;
+        std::cerr << "Plugin with alias '" << plugin_alias << "' already loaded." << std::endl;
         typedef void (*destroy_plugin_t)(IPluginInterface*);
         destroy_plugin_t destroy_plugin = (destroy_plugin_t) dlsym(handle, "destroyPlugin");
         if (destroy_plugin) {
@@ -66,6 +65,7 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
         return false;
     }
     
+    // Store the new plugin in the map.
     loaded_plugins[plugin_alias] = std::make_unique<LoadedPlugin>(handle, plugin, plugin_path);
     
     std::cout << "Loaded plugin: " << plugin->getName() 
@@ -80,6 +80,7 @@ void PluginManager::unloadPlugin(const std::string& alias) {
     auto it = loaded_plugins.find(alias);
     if (it != loaded_plugins.end()) {
         std::cout << "Unloading plugin: " << alias << std::endl;
+        // The unique_ptr's destructor will handle cleanup via ~LoadedPlugin().
         loaded_plugins.erase(it);
     }
 }
@@ -94,10 +95,10 @@ bool PluginManager::isPluginLoaded(const std::string& alias) const {
 }
 
 const GLSLFunction* PluginManager::findFunction(const std::string& function_name) {
-    // 모든 로드된 플러그인에서 검색 (O(플러그인 수))
+    // Search across all loaded plugins.
     for (const auto& [alias, plugin] : loaded_plugins) {
         if (const GLSLFunction* func = plugin->interface->findFunction(function_name)) {
-            return func;  // 각 플러그인 내에서는 O(1) 검색
+            return func;
         }
     }
     return nullptr;
@@ -195,14 +196,14 @@ const IPluginInterface* PluginManager::getPlugin(const std::string& alias) const
 }
 
 std::string PluginManager::extractPluginDirectory(const std::string& plugin_lib_path) const {
-    // plugin_lib_path 예시: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.so"
-    // 반환값: "/path/to/bin/data/plugins/lygia-plugin/"
+    // Example plugin_lib_path: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.so"
+    // Returns: "/path/to/bin/data/plugins/lygia-plugin/"
     
     size_t last_slash = plugin_lib_path.find_last_of('/');
     if (last_slash != std::string::npos) {
-        return plugin_lib_path.substr(0, last_slash + 1); // '/' 포함
+        return plugin_lib_path.substr(0, last_slash + 1); // Include the trailing '/'
     }
     
-    // 슬래시를 찾을 수 없는 경우 현재 디렉토리
+    // If no slash is found, return the current directory.
     return "./";
 }
