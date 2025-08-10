@@ -111,12 +111,15 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
 
 	// Determine which plugin the function belongs to.
 	std::string plugin_name = "";
-	auto plugin_infos = plugin_manager->getPluginInfos();
-    for (const auto& [name, info] : plugin_infos) {
-        if (info.function_names.count(function_name) > 0) {
-            plugin_name = name;
-            break;
+	auto functions_by_plugin = plugin_manager->getFunctionsByPlugin();
+    for (const auto& [name, function_list] : functions_by_plugin) {
+        for (const auto& func_name : function_list) {
+            if (func_name == function_name) {
+                plugin_name = name;
+                break;
+            }
         }
+        if (!plugin_name.empty()) break;
     }
 
 	// Load the GLSL source code for the function.
