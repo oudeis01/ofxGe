@@ -22,6 +22,12 @@ public:
     void draw() override;
     void exit() override;
     void keyPressed(int key) override;
+    
+    // muparser test function
+    void testMuParser();
+    
+    // expression parser test function
+    void testExpressionParser();
 
     float width, height; ///< The width and height of the application window.
     ofPlanePrimitive plane; ///< A 3D plane used as a canvas for rendering shaders.

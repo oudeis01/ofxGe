@@ -104,6 +104,14 @@ bool BuiltinVariables::isValidSwizzle(const std::string& variable, std::string& 
         return true;
     }
     
+    // Check if this is a complex mathematical expression
+    // Complex expressions contain operators or function calls, not just simple variable access
+    if (isComplexExpression(variable)) {
+        // For complex expressions, we skip swizzle validation 
+        // These will be handled by the ExpressionParser later
+        return true;
+    }
+    
     // If there's no swizzle, it's valid by default in this context.
     if (!hasSwizzle(variable)) {
         return true;
@@ -185,4 +193,40 @@ bool BuiltinVariables::isFloatLiteral(const std::string& str) const {
         }
     }
     return true;
+}
+
+//--------------------------------------------------------------
+bool BuiltinVariables::isComplexExpression(const std::string& expr) const {
+    // Check for mathematical operators
+    if (expr.find('+') != std::string::npos ||
+        expr.find('-') != std::string::npos ||
+        expr.find('*') != std::string::npos ||
+        expr.find('/') != std::string::npos ||
+        expr.find('%') != std::string::npos) {
+        return true;
+    }
+    
+    // Check for function calls (contains parentheses)
+    if (expr.find('(') != std::string::npos && expr.find(')') != std::string::npos) {
+        return true;
+    }
+    
+    // Check for comparison operators
+    if (expr.find("==") != std::string::npos ||
+        expr.find("!=") != std::string::npos ||
+        expr.find("<=") != std::string::npos ||
+        expr.find(">=") != std::string::npos ||
+        expr.find('<') != std::string::npos ||
+        expr.find('>') != std::string::npos) {
+        return true;
+    }
+    
+    // Check for logical operators
+    if (expr.find("&&") != std::string::npos ||
+        expr.find("||") != std::string::npos ||
+        expr.find('!') != std::string::npos) {
+        return true;
+    }
+    
+    return false;
 }

@@ -17,7 +17,8 @@ ShaderManager::ShaderManager(PluginManager * pm)
 		return;
 	}
 
-	initializeShaderTemplates();
+	// Initialize code generator (replaces initializeShaderTemplates)
+	code_generator = std::make_unique<ShaderCodeGenerator>(plugin_manager);
 
 	ofLogNotice("ShaderManager") << "ShaderManager initialized";
 }
@@ -27,48 +28,6 @@ ShaderManager::~ShaderManager() {
 	clearCache();
 }
 
-//--------------------------------------------------------------
-void ShaderManager::initializeShaderTemplates() {
-	// Default vertex shader passes through position and texture coordinates.
-	default_vertex_shader = R"(
-#version 150
-
-uniform mat4 modelViewProjectionMatrix;
-
-in vec4 position;
-in vec2 texcoord;
-
-out vec2 vTexCoord;
-
-void main() {
-    vTexCoord = texcoord;
-    gl_Position = modelViewProjectionMatrix * position;
-}
-)";
-
-	// Default fragment shader template with placeholders for dynamic code injection.
-	default_fragment_shader_template = R"(
-#version 150
-
-in vec2 vTexCoord;
-out vec4 outputColor;
-
-// Uniforms will be inserted here
-{UNIFORMS}
-
-// GLSL function will be inserted here
-{GLSL_FUNCTION}
-
-void main() {
-    // Main function content will be inserted here
-    {MAIN_CONTENT}
-}
-)";
-
-	if (debug_mode) {
-		ofLogNotice("ShaderManager") << "Shader templates initialized";
-	}
-}
 
 //--------------------------------------------------------------
 std::shared_ptr<ShaderNode> ShaderManager::createShader(
@@ -78,36 +37,54 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
 	if (debug_mode) {
 		ofLogNotice("ShaderManager") << "Creating shader for function: " << function_name
 									 << " with " << arguments.size() << " arguments";
+		for (size_t i = 0; i < arguments.size(); i++) {
+			ofLogNotice("ShaderManager") << "  Arg " << i << ": '" << arguments[i] << "'";
+		}
 	}
 
 	// Validate arguments, especially swizzling, before proceeding.
 	BuiltinVariables & builtins = BuiltinVariables::getInstance();
-	for (const auto & arg : arguments) {
+	for (size_t i = 0; i < arguments.size(); i++) {
+		const auto & arg = arguments[i];
 		std::string errorMessage;
+		ofLogNotice("ShaderManager") << "Validating argument " << i << ": '" << arg << "'";
 		if (!builtins.isValidSwizzle(arg, errorMessage)) {
+			ofLogError("ShaderManager") << "Validation failed for '" << arg << "': " << errorMessage;
 			return createErrorShader(function_name, arguments, errorMessage);
 		}
+		ofLogNotice("ShaderManager") << "Argument " << i << " validation passed";
 	}
 
 	// Check cache for an existing, ready-to-use shader.
 	std::string cache_key = generateCacheKey(function_name, arguments);
+	ofLogNotice("ShaderManager") << "Cache key: '" << cache_key << "'";
 	auto cached_shader = getCachedShader(cache_key);
-	if (cached_shader && cached_shader->isReady()) {
-		if (debug_mode) {
-			ofLogNotice("ShaderManager") << "Returning cached shader: " << cache_key;
+	if (cached_shader) {
+		ofLogNotice("ShaderManager") << "Found cached shader, isReady: " << cached_shader->isReady();
+		if (cached_shader->isReady()) {
+			if (debug_mode) {
+				ofLogNotice("ShaderManager") << "Returning cached shader: " << cache_key;
+			}
+			return cached_shader;
+		} else {
+			ofLogNotice("ShaderManager") << "Cached shader is not ready, proceeding with new creation";
 		}
-		return cached_shader;
+	} else {
+		ofLogNotice("ShaderManager") << "No cached shader found";
 	}
 
 	// Create a new shader node to manage the shader's state.
 	auto shader_node = std::make_shared<ShaderNode>(function_name, arguments);
+	ofLogNotice("ShaderManager") << "Step 1: Created ShaderNode";
 
 	// Find the function's metadata from the plugin manager.
 	const GLSLFunction * function_metadata = plugin_manager->findFunction(function_name);
 	if (!function_metadata) {
 		std::string error = "Function '" + function_name + "' not found in any loaded plugin";
+		ofLogError("ShaderManager") << "Step 2: Function not found!";
 		return createErrorShader(function_name, arguments, error);
 	}
+	ofLogNotice("ShaderManager") << "Step 2: Found function metadata";
 
 	// Determine which plugin the function belongs to.
 	std::string plugin_name = "";
@@ -123,11 +100,14 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
     }
 
 	// Load the GLSL source code for the function.
+	ofLogNotice("ShaderManager") << "Step 3: Loading GLSL function code";
 	std::string glsl_function_code = loadGLSLFunction(function_metadata, plugin_name);
 	if (glsl_function_code.empty()) {
 		std::string error = "Failed to load GLSL code for function: " + function_name;
+		ofLogError("ShaderManager") << "Step 3: Failed to load GLSL code!";
 		return createErrorShader(function_name, arguments, error);
 	}
+	ofLogNotice("ShaderManager") << "Step 3: Loaded GLSL function code (length: " << glsl_function_code.length() << ")";
 
 	shader_node->glsl_function_code = glsl_function_code;
 
@@ -138,9 +118,15 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
 		shader_node->source_directory_path = glsl_file_path.substr(0, last_slash);
 	}
 
-	// Generate the final shader source code.
-	std::string vertex_code = generateVertexShader();
-	std::string fragment_code = generateFragmentShader(glsl_function_code, function_name, arguments);
+	// Generate the final shader source code using the new code generator.
+	if (!code_generator) {
+		ofLogError("ShaderManager") << "ERROR: code_generator is null!";
+		return createErrorShader(function_name, arguments, "code_generator is null");
+	}
+	
+	ofLogNotice("ShaderManager") << "About to call code_generator->generateFragmentShader()";
+	std::string vertex_code = code_generator->generateVertexShader();
+	std::string fragment_code = code_generator->generateFragmentShader(glsl_function_code, function_name, arguments);
 
 	shader_node->setShaderCode(vertex_code, fragment_code);
 
@@ -151,26 +137,51 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
 	}
 
 	// Configure automatic uniforms based on the arguments used.
+    // Use ExpressionParser to properly detect dependencies in complex expressions
     bool has_time = false;
+    bool has_st = false;
+    
     for(const auto& arg : arguments) {
-        if(builtins.extractBaseVariable(arg) == "time") {
+        // For simple variables, use the old method
+        if (builtins.extractBaseVariable(arg) == "time") {
             has_time = true;
-            break;
+        }
+        if (builtins.extractBaseVariable(arg) == "st") {
+            has_st = true;
+        }
+        
+        // For complex expressions, parse dependencies
+        if (builtins.isComplexExpression(arg)) {
+            ofLogNotice("ShaderManager") << "Complex expression detected: '" << arg << "'";
+            // Use the same ExpressionParser logic as ShaderCodeGenerator
+            ExpressionParser temp_parser;
+            ExpressionInfo expr_info = temp_parser.parseExpression(arg);
+            
+            ofLogNotice("ShaderManager") << "Dependencies found: " << expr_info.dependencies.size();
+            for (const auto& dep : expr_info.dependencies) {
+                ofLogNotice("ShaderManager") << "  Dependency: '" << dep << "'";
+                std::string base_var = builtins.extractBaseVariable(dep);
+                ofLogNotice("ShaderManager") << "  Base variable: '" << base_var << "'";
+                if (base_var == "time") {
+                    ofLogNotice("ShaderManager") << "  -> TIME DEPENDENCY FOUND!";
+                    has_time = true;
+                }
+                if (base_var == "st") {
+                    ofLogNotice("ShaderManager") << "  -> ST DEPENDENCY FOUND!";
+                    has_st = true;
+                }
+            }
         }
     }
 
-	bool has_st = false;
-	for (const auto & arg : arguments) {
-		if (builtins.extractBaseVariable(arg) == "st") {
-			has_st = true;
-			break;
-		}
-	}
-
+	ofLogNotice("ShaderManager") << "Uniform analysis results - has_time: " << has_time << ", has_st: " << has_st;
+	
 	if (has_time) {
+		ofLogNotice("ShaderManager") << "Enabling automatic time updates";
 		shader_node->setAutoUpdateTime(true);
 	}
 	if (has_st) {
+		ofLogNotice("ShaderManager") << "Enabling automatic resolution updates";
 		shader_node->setAutoUpdateResolution(true);
 	}
 
@@ -235,57 +246,6 @@ std::string ShaderManager::readFileContent(const std::string & file_path) {
     return buffer.getText();
 }
 
-//--------------------------------------------------------------
-std::string ShaderManager::generateVertexShader() {
-	return default_vertex_shader;
-}
-
-//--------------------------------------------------------------
-std::string ShaderManager::generateFragmentShader(
-	const std::string & glsl_function_code,
-	const std::string & function_name,
-	const std::vector<std::string> & arguments) {
-
-	std::string fragment_code = default_fragment_shader_template;
-
-	std::string uniforms = generateUniforms(arguments);
-
-	std::string wrapper_functions = "";
-	const GLSLFunction * function_metadata = plugin_manager->findFunction(function_name);
-	if (function_metadata && !function_metadata->overloads.empty()) {
-		const FunctionOverload * best_overload = findBestOverload(function_metadata, arguments);
-		if (best_overload) {
-			if (!isSignatureDuplicate(function_metadata, arguments)) {
-				wrapper_functions = generateWrapperFunction(function_name, arguments, best_overload);
-			}
-		}
-	}
-
-	std::string main_content = generateMainFunction(function_name, arguments);
-
-	std::string combined_functions = glsl_function_code;
-	if (!wrapper_functions.empty()) {
-		combined_functions += "\n\n// Generated wrapper function to adapt arguments\n" + wrapper_functions;
-	}
-
-	// Replace placeholders in the template.
-	size_t pos = fragment_code.find("{UNIFORMS}");
-	if (pos != std::string::npos) {
-		fragment_code.replace(pos, 10, uniforms);
-	}
-
-	pos = fragment_code.find("{GLSL_FUNCTION}");
-	if (pos != std::string::npos) {
-		fragment_code.replace(pos, 15, combined_functions);
-	}
-
-	pos = fragment_code.find("{MAIN_CONTENT}");
-	if (pos != std::string::npos) {
-		fragment_code.replace(pos, 14, main_content);
-	}
-
-	return fragment_code;
-}
 
 //--------------------------------------------------------------
 bool ShaderManager::isFloatLiteral(const std::string & str) {
@@ -336,48 +296,6 @@ bool ShaderManager::canCombineToVector(const std::vector<std::string> & argument
 }
 
 //--------------------------------------------------------------
-std::string ShaderManager::generateUniforms(const std::vector<std::string> & arguments) {
-	std::stringstream uniforms;
-	BuiltinVariables & builtins = BuiltinVariables::getInstance();
-	std::set<std::string> needed_uniforms;
-
-	for (const auto & arg : arguments) {
-		if (isFloatLiteral(arg)) {
-			continue;
-		}
-
-		std::string base_var = builtins.extractBaseVariable(arg);
-		const BuiltinVariable * builtin_info = builtins.getBuiltinInfo(base_var);
-
-		if (builtin_info) {
-			if (builtin_info->needs_uniform) {
-                // 'st' requires the 'resolution' uniform.
-				if (base_var == "st") {
-					needed_uniforms.insert("resolution");
-				}
-                else {
-                    needed_uniforms.insert(base_var);
-                }
-			}
-		} else {
-			// Assume any non-builtin is a user-defined float uniform.
-			needed_uniforms.insert(arg);
-		}
-	}
-
-	for (const auto & uniform_name : needed_uniforms) {
-		if (uniform_name == "time") {
-			uniforms << "uniform float time;\n";
-		} else if (uniform_name == "resolution") {
-			uniforms << "uniform vec2 resolution;\n";
-		} else {
-			uniforms << "uniform float " << uniform_name << ";\n";
-		}
-	}
-
-	return uniforms.str();
-}
-//--------------------------------------------------------------
 std::string ShaderManager::getFunctionReturnType(const std::string& function_name, 
                                                 const std::vector<std::string>& arguments) {
     const GLSLFunction* function_metadata = plugin_manager->findFunction(function_name);
@@ -391,59 +309,6 @@ std::string ShaderManager::getFunctionReturnType(const std::string& function_nam
     }
     
     return best_overload->returnType;
-}
-//--------------------------------------------------------------
-std::string ShaderManager::generateMainFunction(const std::string & function_name, const std::vector<std::string> & arguments) {
-    std::stringstream main_func;
-    BuiltinVariables & builtins = BuiltinVariables::getInstance();
-    std::set<std::string> needed_declarations;
-
-    // Determine which local variables need to be declared (e.g., 'st').
-    for (const auto & arg : arguments) {
-        if (isFloatLiteral(arg)) continue;
-
-        std::string base_var = builtins.extractBaseVariable(arg);
-        const BuiltinVariable * builtin_info = builtins.getBuiltinInfo(base_var);
-
-        if (builtin_info && builtin_info->needs_declaration) {
-            needed_declarations.insert(builtin_info->declaration_code);
-        }
-    }
-
-    for (const auto & declaration : needed_declarations) {
-        main_func << "    " << declaration << "\n";
-    }
-    if (!needed_declarations.empty()) {
-        main_func << "\n";
-    }
-
-    std::string return_type = getFunctionReturnType(function_name, arguments);
-
-    main_func << "    // Call the target GLSL function\n";
-    main_func << "    " << return_type << " result = " << function_name << "(";
-
-    // Pass the arguments to the function call.
-    for (size_t i = 0; i < arguments.size(); ++i) {
-        if (i > 0) main_func << ", ";
-        main_func << arguments[i];
-    }
-    main_func << ");\n\n";
-
-    // Convert the result to a vec4 for output.
-    if (return_type == "float") {
-        main_func << "    outputColor = vec4(vec3(result), 1.0);\n";
-    } else if (return_type == "vec2") {
-        main_func << "    outputColor = vec4(result, 0.0, 1.0);\n";
-    } else if (return_type == "vec3") {
-        main_func << "    outputColor = vec4(result, 1.0);\n";
-    } else if (return_type == "vec4") {
-        main_func << "    outputColor = result;\n";
-    } else {
-        // Fallback for unknown or unsupported return types.
-        main_func << "    outputColor = vec4(0.0, 0.0, 0.0, 1.0); // Unsupported return type\n";
-    }
-
-    return main_func.str();
 }
 
 //--------------------------------------------------------------

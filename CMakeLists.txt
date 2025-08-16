@@ -10,6 +10,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/openFrameworks/cmake/openFram
 file(GLOB_RECURSE ADDITIONAL_SOURCES
     "src/pluginSystem/*.cpp"
     "src/oscHandler/*.cpp"
+    "src/shaderSystem/*.cpp"
 )
 
 # openFrameworks 프로젝트 설정 (한 줄이면 끝!)
@@ -20,6 +21,15 @@ target_sources(${PROJECT_NAME} PRIVATE ${ADDITIONAL_SOURCES})
 
 # 플러그인 시스템을 위한 추가 라이브러리
 target_link_libraries(${PROJECT_NAME} PRIVATE dl)
+
+# muparser 라이브러리 (수학 표현식 파싱)
+find_library(MUPARSER_LIB muparser)
+if(MUPARSER_LIB)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${MUPARSER_LIB})
+    message(STATUS "Found muparser: ${MUPARSER_LIB}")
+else()
+    message(FATAL_ERROR "muparser library not found! Install with: pacman -S muparser")
+endif()
 
 # ========================================
 # 외부 라이브러리 추가 (선택사항)

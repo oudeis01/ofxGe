@@ -125,6 +125,13 @@ public:
      * @return True if the string is a valid float literal, false otherwise.
      */
     bool isFloatLiteral(const std::string& str) const;
+    
+    /**
+     * @brief Checks if a string represents a complex mathematical expression.
+     * @param expr The string to check.
+     * @return True if the string contains operators or function calls, false otherwise.
+     */
+    bool isComplexExpression(const std::string& expr) const;
 
 private:
     /**

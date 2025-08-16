@@ -112,7 +112,7 @@ void graphicsEngine::initializeShaderSystem() {
 }
 
 //--------------------------------------------------------------
-void graphicsEngine::testShaderCreation() {
+void graphicsEngine::testShaderCreation(std::string function_name, std::vector<std::string>& args) {
     if (!shader_manager) {
         ofLogError("graphicsEngine") << "Shader manager not initialized";
         return;
@@ -121,8 +121,7 @@ void graphicsEngine::testShaderCreation() {
     ofLogNotice("graphicsEngine") << "Testing shader creation with 'curl' function...";
     
     // Test with valid arguments.
-    std::vector<std::string> arguments = {"st", "time"};
-    current_shader = shader_manager->createShader("curl", arguments);
+    current_shader = shader_manager->createShader(function_name, args);
     
     if (current_shader) {
         if (current_shader->isReady()) {

@@ -1,5 +1,7 @@
 #pragma once
 #include "ShaderNode.h"
+#include "ShaderCodeGenerator.h"
+#include "ExpressionParser.h"
 #include "BuiltinVariables.h"
 #include "../pluginSystem/PluginManager.h"
 #include "ofMain.h"
@@ -21,6 +23,7 @@ class ShaderManager {
 private:
     // --- Dependencies ---
     PluginManager* plugin_manager; ///< A pointer to the plugin manager for accessing GLSL functions.
+    std::unique_ptr<ShaderCodeGenerator> code_generator; ///< Code generator for creating GLSL shader code
     
     // --- Internal State ---
     bool debug_mode; ///< Flag to control verbose debug logging
@@ -34,10 +37,6 @@ private:
     std::unordered_map<std::string, std::shared_ptr<ShaderNode>> active_shaders;
     /// An atomic counter to generate unique IDs for shaders.
     std::atomic<int> next_shader_id{0};
-    
-    // --- Shader Templates ---
-    std::string default_vertex_shader; ///< The template for the default vertex shader.
-    std::string default_fragment_shader_template; ///< The template for the fragment shader, with placeholders.
     
 public:
     /**
@@ -104,25 +103,6 @@ public:
      */
     std::string loadGLSLFunction(const GLSLFunction* function_metadata, const std::string& plugin_name);
     
-    // --- Shader Code Generation ---
-    /**
-     * @brief Generates the standard vertex shader code.
-     * @return A string containing the vertex shader code.
-     */
-    std::string generateVertexShader();
-    
-    /**
-     * @brief Generates the final fragment shader code by combining templates, uniforms, and function code.
-     * @param glsl_function_code The source code of the GLSL function and its dependencies.
-     * @param function_name The name of the root function being called.
-     * @param arguments The arguments being passed to the function.
-     * @return A string containing the complete fragment shader code.
-     */
-    std::string generateFragmentShader(
-        const std::string& glsl_function_code,
-        const std::string& function_name,
-        const std::vector<std::string>& arguments
-    );
     
     // --- Wrapper Function System ---
     /**
@@ -221,25 +201,6 @@ private:
      */
     std::string generateUniqueId();
     
-    /**
-     * @brief Initializes the default shader templates.
-     */
-    void initializeShaderTemplates();
-    
-    /**
-     * @brief Generates the uniform declarations for the shader based on arguments.
-     * @param arguments The vector of user-provided arguments.
-     * @return A string containing the GLSL uniform declarations.
-     */
-    std::string generateUniforms(const std::vector<std::string>& arguments);
-    
-    /**
-     * @brief Generates the content of the main() function for the fragment shader.
-     * @param function_name The name of the function to call.
-     * @param arguments The arguments to pass to the function.
-     * @return A string containing the GLSL code for the main() function.
-     */
-    std::string generateMainFunction(const std::string& function_name, const std::vector<std::string>& arguments);
     
     /**
      * @brief A helper to read the entire content of a file into a string.

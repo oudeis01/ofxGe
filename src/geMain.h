@@ -48,7 +48,7 @@ public:
     /**
      * @brief Runs a test to create a shader using a specific function (e.g., "curl").
      */
-    void testShaderCreation();
+    void testShaderCreation(std::string function_name, std::vector<std::string>& args);
 
     /**
      * @brief Updates the automatic uniforms (e.g., time, resolution) for the current shader.
