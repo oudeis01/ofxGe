@@ -6,6 +6,18 @@
 #include <map>
 
 /**
+ * @enum ShaderNodeState
+ * @brief Represents the current state of a shader node
+ */
+enum class ShaderNodeState {
+    CREATED,        ///< Just created, not yet compiled
+    COMPILING,      ///< Currently being compiled
+    IDLE,           ///< Compiled successfully, waiting for connection
+    CONNECTED,      ///< Connected to global output and actively rendering
+    ERROR           ///< Compilation or runtime error occurred
+};
+
+/**
  * @struct ShaderNode
  * @brief  Represents a single, dynamically generated shader instance.
  * @details This struct manages the entire lifecycle of a shader created from a
@@ -37,6 +49,9 @@ struct ShaderNode {
     bool is_compiled;                    ///< True if the shader has been successfully compiled and linked.
     bool has_error;                      ///< True if an error occurred during generation or compilation.
     std::string error_message;           ///< The error message, if any.
+    ShaderNodeState node_state;          ///< Current state of the shader node
+    bool is_connected_to_output;         ///< True if connected to global output
+    std::string creation_timestamp;      ///< When this node was created
     
     /**
      * @brief Default constructor.
@@ -92,6 +107,49 @@ struct ShaderNode {
      * @param error The error message to store.
      */
     void setError(const std::string& error);
+    
+    // --- State Management Methods ---
+    /**
+     * @brief Sets the current state of the shader node
+     * @param state The new state to set
+     */
+    void setState(ShaderNodeState state);
+    
+    /**
+     * @brief Gets the current state of the shader node
+     * @return The current ShaderNodeState
+     */
+    ShaderNodeState getState() const;
+    
+    /**
+     * @brief Checks if the node is in idle state (ready but not connected)
+     * @return True if in idle state
+     */
+    bool isIdle() const;
+    
+    /**
+     * @brief Checks if the node is connected to global output
+     * @return True if connected
+     */
+    bool isConnected() const;
+    
+    /**
+     * @brief Sets the connection status to global output
+     * @param connected True if connected, false if disconnected
+     */
+    void setConnectedToOutput(bool connected);
+    
+    /**
+     * @brief Gets a detailed status string including state information
+     * @return Detailed status description
+     */
+    std::string getDetailedStatus() const;
+    
+    /**
+     * @brief Gets current timestamp as string
+     * @return Current timestamp
+     */
+    std::string getCurrentTimestamp() const;
     
     // --- Uniform Management Methods ---
     /**

@@ -3,6 +3,7 @@
 #include "ShaderCodeGenerator.h"
 #include "ExpressionParser.h"
 #include "BuiltinVariables.h"
+#include "MinimalBuiltinChecker.h"
 #include "../pluginSystem/PluginManager.h"
 #include "ofMain.h"
 #include <unordered_map>

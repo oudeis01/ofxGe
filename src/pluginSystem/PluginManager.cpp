@@ -1,4 +1,5 @@
 #include "PluginManager.h"
+#include "ofMain.h"
 #include <iostream>
 #include <algorithm>
 #include <string>
@@ -72,6 +73,9 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
               << " v" << plugin->getVersion() 
               << " by " << plugin->getAuthor()
               << " (" << plugin->getFunctionCount() << " functions)" << std::endl;
+    
+    // Detect and log conflicts with GLSL built-ins
+    detectAndLogBuiltinConflicts(plugin_alias, plugin);
     
     return true;
 }
@@ -206,4 +210,72 @@ std::string PluginManager::extractPluginDirectory(const std::string& plugin_lib_
     
     // If no slash is found, return the current directory.
     return "./";
+}
+
+// ================================================================================
+// BUILTIN CONFLICT DETECTION IMPLEMENTATION
+// ================================================================================
+
+void PluginManager::detectAndLogBuiltinConflicts(const std::string& plugin_alias, 
+                                                const IPluginInterface* plugin_interface) const {
+    if (!plugin_interface) return;
+    
+    std::vector<std::string> all_function_names = plugin_interface->getAllFunctionNames();
+    std::vector<std::string> conflicting_functions;
+    
+    // Check each plugin function against GLSL built-ins
+    for (const std::string& func_name : all_function_names) {
+        if (MinimalBuiltinChecker::isBuiltinFunction(func_name)) {
+            conflicting_functions.push_back(func_name);
+        }
+    }
+    
+    // Log conflicts if any found
+    if (!conflicting_functions.empty()) {
+        ofLogWarning("PluginManager") 
+            << "Plugin '" << plugin_alias << "' contains " << conflicting_functions.size() 
+            << " function(s) that conflict with GLSL built-ins (behavior is undetermined):";
+        
+        for (const std::string& func_name : conflicting_functions) {
+            ofLogWarning("PluginManager") << "  - " << func_name << "()";
+        }
+        
+        ofLogWarning("PluginManager") 
+            << "These functions may not behave as expected. Use at your own risk.";
+    } else {
+        ofLogNotice("PluginManager") 
+            << "Plugin '" << plugin_alias << "' has no conflicts with GLSL built-ins.";
+    }
+}
+
+bool PluginManager::hasBuiltinConflict(const std::string& function_name) const {
+    return MinimalBuiltinChecker::isBuiltinFunction(function_name);
+}
+
+std::map<std::string, std::set<std::string>> PluginManager::getAllBuiltinConflicts() const {
+    std::map<std::string, std::set<std::string>> conflicts;
+    
+    for (const auto& [plugin_alias, plugin] : loaded_plugins) {
+        std::vector<std::string> all_function_names = plugin->interface->getAllFunctionNames();
+        std::set<std::string> plugin_conflicts;
+        
+        for (const std::string& func_name : all_function_names) {
+            if (MinimalBuiltinChecker::isBuiltinFunction(func_name)) {
+                plugin_conflicts.insert(func_name);
+            }
+        }
+        
+        if (!plugin_conflicts.empty()) {
+            conflicts[plugin_alias] = plugin_conflicts;
+        }
+    }
+    
+    return conflicts;
+}
+
+void PluginManager::logRuntimeConflictWarning(const std::string& function_name, 
+                                             const std::string& plugin_name) const {
+    ofLogWarning("PluginManager") 
+        << "Using conflicting function '" << function_name << "' from plugin '" 
+        << plugin_name << "' - behavior is undetermined (conflicts with GLSL built-in)";
 }

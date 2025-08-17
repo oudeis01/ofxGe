@@ -3,14 +3,17 @@
 
 //--------------------------------------------------------------
 ShaderNode::ShaderNode() 
-    : is_compiled(false), has_error(false), auto_update_time(false), auto_update_resolution(false) {
+    : is_compiled(false), has_error(false), auto_update_time(false), auto_update_resolution(false),
+      node_state(ShaderNodeState::CREATED), is_connected_to_output(false) {
+    creation_timestamp = getCurrentTimestamp();
 }
 
 //--------------------------------------------------------------
 ShaderNode::ShaderNode(const std::string& func_name, const std::vector<std::string>& args)
-    : function_name(func_name), arguments(args), is_compiled(false), has_error(false), 
-      auto_update_time(false), auto_update_resolution(false) {
+    : function_name(func_name), arguments(args), auto_update_time(false), auto_update_resolution(false),
+      is_compiled(false), has_error(false), node_state(ShaderNodeState::CREATED), is_connected_to_output(false) {
     shader_key = generateShaderKey();
+    creation_timestamp = getCurrentTimestamp();
 }
 
 //--------------------------------------------------------------
@@ -20,6 +23,8 @@ ShaderNode::~ShaderNode() {
 
 //--------------------------------------------------------------
 bool ShaderNode::compile() {
+    setState(ShaderNodeState::COMPILING);
+    
     if (vertex_shader_code.empty() || fragment_shader_code.empty()) {
         setError("Shader code not set before compilation");
         return false;
@@ -41,6 +46,7 @@ bool ShaderNode::compile() {
             is_compiled = true;
             has_error = false;
             error_message.clear();
+            setState(ShaderNodeState::IDLE);  // Set to idle after successful compilation
             ofLogNotice("ShaderNode") << "Successfully compiled shader for function: " << function_name;
             return true;
         } else {
@@ -174,4 +180,119 @@ void ShaderNode::updateAutoUniforms() {
     if (auto_update_resolution) {
         compiled_shader.setUniform2f("resolution", ofGetWidth(), ofGetHeight());
     }
+}
+
+// ================================================================================
+// STATE MANAGEMENT METHODS
+// ================================================================================
+
+//--------------------------------------------------------------
+void ShaderNode::setState(ShaderNodeState state) {
+    if (node_state != state) {
+        ShaderNodeState old_state = node_state;
+        node_state = state;
+        
+        // Handle state transitions
+        if (state == ShaderNodeState::ERROR) {
+            has_error = true;
+            is_compiled = false;
+        } else if (state == ShaderNodeState::IDLE && old_state == ShaderNodeState::COMPILING) {
+            // Successfully compiled, ready to be connected
+            ofLogNotice("ShaderNode") << "Shader '" << function_name << "' is now IDLE and ready for connection";
+        } else if (state == ShaderNodeState::CONNECTED) {
+            is_connected_to_output = true;
+            ofLogNotice("ShaderNode") << "Shader '" << function_name << "' is now CONNECTED to global output";
+        } else if (state == ShaderNodeState::IDLE && old_state == ShaderNodeState::CONNECTED) {
+            is_connected_to_output = false;
+            ofLogNotice("ShaderNode") << "Shader '" << function_name << "' is now IDLE (disconnected from output)";
+        }
+    }
+}
+
+//--------------------------------------------------------------
+ShaderNodeState ShaderNode::getState() const {
+    return node_state;
+}
+
+//--------------------------------------------------------------
+bool ShaderNode::isIdle() const {
+    return node_state == ShaderNodeState::IDLE;
+}
+
+//--------------------------------------------------------------
+bool ShaderNode::isConnected() const {
+    return node_state == ShaderNodeState::CONNECTED && is_connected_to_output;
+}
+
+//--------------------------------------------------------------
+void ShaderNode::setConnectedToOutput(bool connected) {
+    is_connected_to_output = connected;
+    if (connected) {
+        setState(ShaderNodeState::CONNECTED);
+    } else {
+        setState(ShaderNodeState::IDLE);
+    }
+}
+
+//--------------------------------------------------------------
+std::string ShaderNode::getDetailedStatus() const {
+    std::stringstream status;
+    
+    status << "=== Shader Node Status ===\n";
+    status << "Function: " << function_name << "\n";
+    status << "Created: " << creation_timestamp << "\n";
+    
+    // State information
+    switch (node_state) {
+        case ShaderNodeState::CREATED:
+            status << "State: CREATED (not yet compiled)\n";
+            break;
+        case ShaderNodeState::COMPILING:
+            status << "State: COMPILING (in progress)\n";
+            break;
+        case ShaderNodeState::IDLE:
+            status << "State: IDLE (compiled, ready for connection)\n";
+            break;
+        case ShaderNodeState::CONNECTED:
+            status << "State: CONNECTED (active rendering)\n";
+            break;
+        case ShaderNodeState::ERROR:
+            status << "State: ERROR\n";
+            status << "Error: " << error_message << "\n";
+            break;
+    }
+    
+    // Compilation status
+    status << "Compiled: " << (is_compiled ? "Yes" : "No") << "\n";
+    status << "Ready: " << (isReady() ? "Yes" : "No") << "\n";
+    status << "Connected to Output: " << (is_connected_to_output ? "Yes" : "No") << "\n";
+    
+    // Arguments
+    if (!arguments.empty()) {
+        status << "Arguments: ";
+        for (size_t i = 0; i < arguments.size(); i++) {
+            if (i > 0) status << ", ";
+            status << "\"" << arguments[i] << "\"";
+        }
+        status << "\n";
+    }
+    
+    // Uniforms
+    if (!float_uniforms.empty() || !vec2_uniforms.empty()) {
+        status << "Uniforms: " << (float_uniforms.size() + vec2_uniforms.size()) << " total\n";
+    }
+    
+    return status.str();
+}
+
+//--------------------------------------------------------------
+std::string ShaderNode::getCurrentTimestamp() const {
+    time_t now = time(0);
+    char* dt = ctime(&now);
+    std::string timestamp(dt);
+    // Remove newline at end
+    if (!timestamp.empty() && timestamp.back() == '\n') {
+        timestamp.pop_back();
+    }
+    return timestamp;
 }

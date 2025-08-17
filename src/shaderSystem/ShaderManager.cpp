@@ -85,6 +85,13 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
 		return createErrorShader(function_name, arguments, error);
 	}
 	ofLogNotice("ShaderManager") << "Step 2: Found function metadata";
+	
+	// Check for built-in conflicts and log warning if necessary
+	if (plugin_manager->hasBuiltinConflict(function_name)) {
+		// We'll determine the plugin name later, so log a general warning for now
+		ofLogWarning("ShaderManager") 
+			<< "Using function '" << function_name << "' which conflicts with GLSL built-in - behavior is undetermined";
+	}
 
 	// Determine which plugin the function belongs to.
 	std::string plugin_name = "";
@@ -97,6 +104,11 @@ std::shared_ptr<ShaderNode> ShaderManager::createShader(
             }
         }
         if (!plugin_name.empty()) break;
+    }
+    
+    // Now that we have the plugin name, log detailed conflict warning if needed
+    if (plugin_manager->hasBuiltinConflict(function_name) && !plugin_name.empty()) {
+        plugin_manager->logRuntimeConflictWarning(function_name, plugin_name);
     }
 
 	// Load the GLSL source code for the function.

@@ -1,8 +1,11 @@
 #pragma once
 #include "../glsl-plugin-interface/include/IPluginInterface.h"
+#include "../shaderSystem/MinimalBuiltinChecker.h"
 #include <unordered_map>
 #include <memory>
 #include <dlfcn.h>
+#include <set>
+#include <map>
 
 /**
  * @brief Manages the lifecycle of GLSL shader library plugins.
@@ -181,6 +184,30 @@ public:
      */
     std::map<std::string, size_t> getPluginStatistics() const;
     
+    // ================================================================================
+    // BUILTIN CONFLICT DETECTION SYSTEM
+    // ================================================================================
+    
+    /**
+     * @brief Checks if a function name conflicts with GLSL built-ins
+     * @param function_name The function name to check
+     * @return True if the function conflicts with a GLSL built-in
+     */
+    bool hasBuiltinConflict(const std::string& function_name) const;
+    
+    /**
+     * @brief Gets all plugin functions that conflict with GLSL built-ins
+     * @return A map where key is plugin alias and value is set of conflicting function names
+     */
+    std::map<std::string, std::set<std::string>> getAllBuiltinConflicts() const;
+    
+    /**
+     * @brief Logs a warning when a conflicting function is used at runtime
+     * @param function_name The name of the conflicting function being used
+     * @param plugin_name The plugin that provides this function
+     */
+    void logRuntimeConflictWarning(const std::string& function_name, const std::string& plugin_name) const;
+    
     // Plugin access
 
     /**
@@ -204,4 +231,12 @@ private:
      * @return The path to the containing directory, including the trailing slash.
      */
     std::string extractPluginDirectory(const std::string& plugin_lib_path) const;
+    
+    /**
+     * @brief Detects and logs conflicts between plugin functions and GLSL built-ins
+     * @param plugin_alias The alias of the plugin being checked
+     * @param plugin_interface The interface to check functions against
+     */
+    void detectAndLogBuiltinConflicts(const std::string& plugin_alias, 
+                                     const IPluginInterface* plugin_interface) const;
 };
