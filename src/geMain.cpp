@@ -1,4 +1,5 @@
 #include "geMain.h"
+#include <sstream>
 
 //--------------------------------------------------------------
 graphicsEngine::graphicsEngine() {
@@ -140,4 +141,210 @@ void graphicsEngine::updateShaderUniforms() {
     if (current_shader && current_shader->isReady()) {
         current_shader->updateAutoUniforms();
     }
+}
+
+//--------------------------------------------------------------
+// OSC System Implementation
+//--------------------------------------------------------------
+
+void graphicsEngine::initializeOSC(int receive_port) {
+    osc_handler = std::make_unique<OscHandler>();
+    osc_handler->setup(receive_port);
+    
+    ofLogNotice("graphicsEngine") << "OSC system initialized on port: " << receive_port;
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::updateOSC() {
+    if (!osc_handler) {
+        return;
+    }
+    
+    osc_handler->update();
+    
+    processCreateMessages();
+    processConnectMessages();
+    processFreeMessages();
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::shutdownOSC() {
+    if (osc_handler) {
+        osc_handler.reset();
+        ofLogNotice("graphicsEngine") << "OSC system shut down";
+    }
+}
+
+//--------------------------------------------------------------
+std::string graphicsEngine::createShaderWithId(const std::string& function_name, 
+                                              const std::vector<std::string>& arguments) {
+    if (!shader_manager) {
+        ofLogError("graphicsEngine") << "Shader manager not initialized";
+        return "";
+    }
+    
+    std::string shader_id = shader_manager->createShaderWithId(function_name, arguments);
+    
+    if (!shader_id.empty()) {
+        auto shader = shader_manager->getShaderById(shader_id);
+        if (shader) {
+            active_shaders[shader_id] = shader;
+            ofLogNotice("graphicsEngine") << "Created shader with ID: " << shader_id 
+                                         << " for function: " << function_name;
+        }
+    }
+    
+    return shader_id;
+}
+
+//--------------------------------------------------------------
+bool graphicsEngine::connectShaderToOutput(const std::string& shader_id) {
+    auto it = active_shaders.find(shader_id);
+    if (it == active_shaders.end()) {
+        ofLogError("graphicsEngine") << "Shader not found with ID: " << shader_id;
+        return false;
+    }
+    
+    auto shader = it->second;
+    if (!shader || !shader->isReady()) {
+        ofLogError("graphicsEngine") << "Shader not ready for connection: " << shader_id;
+        return false;
+    }
+    
+    // Connect to output (set as current shader)
+    current_shader = shader;
+    shader->setConnectedToOutput(true);
+    
+    ofLogNotice("graphicsEngine") << "Connected shader to output: " << shader_id;
+    return true;
+}
+
+//--------------------------------------------------------------
+bool graphicsEngine::freeShader(const std::string& shader_id) {
+    auto it = active_shaders.find(shader_id);
+    if (it == active_shaders.end()) {
+        ofLogError("graphicsEngine") << "Shader not found with ID: " << shader_id;
+        return false;
+    }
+    
+    // Disconnect from output if it's the current shader
+    if (current_shader && current_shader == it->second) {
+        current_shader.reset();
+    }
+    
+    // Remove from active shaders
+    active_shaders.erase(it);
+    
+    // Remove from shader manager
+    bool removed = shader_manager->removeShaderById(shader_id);
+    
+    ofLogNotice("graphicsEngine") << "Freed shader: " << shader_id 
+                                 << " (removed: " << (removed ? "yes" : "no") << ")";
+    
+    return removed;
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::processCreateMessages() {
+    while (osc_handler->hasCreateMessage()) {
+        auto msg = osc_handler->getNextCreateMessage();
+        
+        if (!msg.is_valid_format) {
+            ofLogError("graphicsEngine") << "Invalid create message format: " << msg.format_error;
+            osc_handler->sendCreateResponse(false, msg.format_error);
+            continue;
+        }
+        
+        ofLogNotice("graphicsEngine") << "Processing OSC /create: " << msg.function_name 
+                                     << " with args: " << msg.raw_arguments;
+        
+        // Parse arguments
+        std::vector<std::string> args = parseArguments(msg.raw_arguments);
+        
+        // Create shader with ID
+        std::string shader_id = createShaderWithId(msg.function_name, args);
+        
+        if (!shader_id.empty()) {
+            osc_handler->sendCreateResponse(true, "Shader created successfully", shader_id);
+            ofLogNotice("graphicsEngine") << "OSC /create success: shader ID = " << shader_id;
+        } else {
+            osc_handler->sendCreateResponse(false, "Failed to create shader");
+            ofLogError("graphicsEngine") << "OSC /create failed for function: " << msg.function_name;
+        }
+    }
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::processConnectMessages() {
+    while (osc_handler->hasConnectMessage()) {
+        auto msg = osc_handler->getNextConnectMessage();
+        
+        if (!msg.is_valid_format) {
+            ofLogError("graphicsEngine") << "Invalid connect message format: " << msg.format_error;
+            osc_handler->sendConnectResponse(false, msg.format_error);
+            continue;
+        }
+        
+        ofLogNotice("graphicsEngine") << "Processing OSC /connect: " << msg.shader_id;
+        
+        bool success = connectShaderToOutput(msg.shader_id);
+        
+        if (success) {
+            osc_handler->sendConnectResponse(true, "Shader connected to output");
+            ofLogNotice("graphicsEngine") << "OSC /connect success: " << msg.shader_id;
+        } else {
+            osc_handler->sendConnectResponse(false, "Failed to connect shader");
+            ofLogError("graphicsEngine") << "OSC /connect failed for ID: " << msg.shader_id;
+        }
+    }
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::processFreeMessages() {
+    while (osc_handler->hasFreeMessage()) {
+        auto msg = osc_handler->getNextFreeMessage();
+        
+        if (!msg.is_valid_format) {
+            ofLogError("graphicsEngine") << "Invalid free message format: " << msg.format_error;
+            osc_handler->sendFreeResponse(false, msg.format_error);
+            continue;
+        }
+        
+        ofLogNotice("graphicsEngine") << "Processing OSC /free: " << msg.shader_id;
+        
+        bool success = freeShader(msg.shader_id);
+        
+        if (success) {
+            osc_handler->sendFreeResponse(true, "Shader freed successfully");
+            ofLogNotice("graphicsEngine") << "OSC /free success: " << msg.shader_id;
+        } else {
+            osc_handler->sendFreeResponse(false, "Failed to free shader");
+            ofLogError("graphicsEngine") << "OSC /free failed for ID: " << msg.shader_id;
+        }
+    }
+}
+
+//--------------------------------------------------------------
+std::vector<std::string> graphicsEngine::parseArguments(const std::string& raw_args) {
+    std::vector<std::string> args;
+    
+    if (raw_args.empty()) {
+        return args;
+    }
+    
+    std::stringstream ss(raw_args);
+    std::string item;
+    
+    while (std::getline(ss, item, ',')) {
+        // Trim whitespace
+        size_t start = item.find_first_not_of(" \t");
+        size_t end = item.find_last_not_of(" \t");
+        
+        if (start != std::string::npos) {
+            item = item.substr(start, end - start + 1);
+            args.push_back(item);
+        }
+    }
+    
+    return args;
 }

@@ -26,6 +26,9 @@ void ofApp::setup(){
     ge.loadAllPlugins();
     ge.displayPluginInfo();
     ge.initializeShaderSystem();
+    
+    // --- Initialize OSC System ---
+    ge.initializeOSC(12345);  // Listen on port 12345
 
     // --- Setup Rendering Canvas ---
     width = ofGetWidth();
@@ -38,6 +41,7 @@ void ofApp::setup(){
 //--------------------------------------------------------------
 void ofApp::update(){
     ge.updateShaderUniforms();
+    ge.updateOSC();  // Process OSC messages
 }
 
 //--------------------------------------------------------------
@@ -51,8 +55,13 @@ void ofApp::draw(){
     ofDrawBitmapString("c - Clear current shader", 20, 140);
     ofDrawBitmapString("m - Test muParser expressions", 20, 160);
     ofDrawBitmapString("e - Test ExpressionParser", 20, 180);
+    ofDrawBitmapString("", 20, 200);
+    ofDrawBitmapString("OSC Commands (port 12345):", 20, 220);
+    ofDrawBitmapString("/create [function] [args] - Create shader with ID", 20, 240);
+    ofDrawBitmapString("/connect [shader_id] - Connect shader to output", 20, 260);
+    ofDrawBitmapString("/free [shader_id] - Free shader memory", 20, 280);
 
-    int y_offset = 220;
+    int y_offset = 320;
     ofDrawBitmapString("Loaded Plugins:", 20, y_offset);
     y_offset += 20;
 
@@ -88,7 +97,8 @@ void ofApp::draw(){
 //--------------------------------------------------------------
 void ofApp::exit(){
     // This is called when the app is about to close.
-    // Resources are released automatically by destructors.
+    ge.shutdownOSC();  // Clean shutdown of OSC system
+    // Other resources are released automatically by destructors.
 }
 
 //--------------------------------------------------------------

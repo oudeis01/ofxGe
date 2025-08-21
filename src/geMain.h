@@ -5,10 +5,12 @@
 #include "pluginSystem/PluginManager.h"
 #include "shaderSystem/ShaderManager.h"
 #include "shaderSystem/ShaderNode.h"
+#include "oscHandler/oscHandler.h"
 
 // Forward declarations to avoid circular dependencies
 class PluginManager;
 class ShaderManager;
+class OscHandler;
 
 /**
  * @class graphicsEngine
@@ -54,6 +56,48 @@ public:
      * @brief Updates the automatic uniforms (e.g., time, resolution) for the current shader.
      */
     void updateShaderUniforms();
+    
+    // --- OSC System Methods ---
+    /**
+     * @brief Initializes the OSC system for receiving and sending messages.
+     * @param receive_port The port number to listen for incoming OSC messages.
+     */
+    void initializeOSC(int receive_port = 12345);
+
+    /**
+     * @brief Updates the OSC system, processing incoming messages.
+     * @details This should be called once per frame in the main update loop.
+     */
+    void updateOSC();
+
+    /**
+     * @brief Shuts down the OSC system and cleans up resources.
+     */
+    void shutdownOSC();
+    
+    // --- Shader Management with ID ---
+    /**
+     * @brief Creates a shader with a unique ID for OSC communication.
+     * @param function_name The name of the GLSL function.
+     * @param arguments The arguments for the function.
+     * @return A unique shader ID string on success, or empty string on failure.
+     */
+    std::string createShaderWithId(const std::string& function_name, 
+                                  const std::vector<std::string>& arguments);
+
+    /**
+     * @brief Connects a shader to the global output for rendering.
+     * @param shader_id The unique ID of the shader to connect.
+     * @return True if connection was successful, false otherwise.
+     */
+    bool connectShaderToOutput(const std::string& shader_id);
+
+    /**
+     * @brief Frees a shader and removes it from management.
+     * @param shader_id The unique ID of the shader to free.
+     * @return True if the shader was found and freed, false otherwise.
+     */
+    bool freeShader(const std::string& shader_id);
 
     // --- Members ---
     /// @brief Manages the lifecycle of all plugins.
@@ -67,5 +111,35 @@ public:
     std::unique_ptr<ShaderManager> shader_manager;
     /// @brief A pointer to the currently active shader being rendered.
     std::shared_ptr<ShaderNode> current_shader;
+    
+    // --- OSC System ---
+    /// @brief Manages OSC message receiving and sending.
+    std::unique_ptr<OscHandler> osc_handler;
+    /// @brief Map of active shaders managed by ID for OSC communication.
+    std::map<std::string, std::shared_ptr<ShaderNode>> active_shaders;
+    
+private:
+    // --- OSC Message Processing Helpers ---
+    /**
+     * @brief Processes incoming /create messages from OSC.
+     */
+    void processCreateMessages();
+
+    /**
+     * @brief Processes incoming /connect messages from OSC.
+     */
+    void processConnectMessages();
+
+    /**
+     * @brief Processes incoming /free messages from OSC.
+     */
+    void processFreeMessages();
+
+    /**
+     * @brief Parses comma-separated argument string into vector.
+     * @param raw_args String like "st,time,1.0"
+     * @return Vector of individual arguments ["st", "time", "1.0"]
+     */
+    std::vector<std::string> parseArguments(const std::string& raw_args);
 
 };

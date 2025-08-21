@@ -12,10 +12,10 @@ OscHandler::~OscHandler() {
 void OscHandler::setup(int receive_port) {
     receiver.setup(receive_port);
     // The sender port is for sending responses back to the client.
-    sender.setup("localhost", 12346);
+    sender.setup("localhost", 54321);  // Changed to match oscdump port
     
     ofLogNotice("OscHandler") << "OSC receiver setup on port: " << receive_port;
-    ofLogNotice("OscHandler") << "OSC sender setup to localhost:12346";
+    ofLogNotice("OscHandler") << "OSC sender setup to localhost:54321";
 }
 
 //--------------------------------------------------------------
