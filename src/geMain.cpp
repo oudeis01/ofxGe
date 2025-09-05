@@ -2,7 +2,8 @@
 #include <sstream>
 
 //--------------------------------------------------------------
-graphicsEngine::graphicsEngine() {
+graphicsEngine::graphicsEngine() 
+    : deferred_compilation_mode(true) {
     // Constructor: Initialization of managers is deferred to the setup() phase
     // to ensure all openFrameworks systems are ready.
 }
@@ -31,8 +32,11 @@ std::vector<std::string> graphicsEngine::findPluginFiles() {
     for (const auto& sub_dir : dir.getFiles()) {
         if (sub_dir.isDirectory()) {
             ofDirectory sub_directory(sub_dir.getAbsolutePath());
-            // Filter for .so files (shared objects/dynamic libraries).
-            sub_directory.allowExt("so");
+            // Filter for supported dynamic library extensions
+            std::vector<std::string> supported_extensions = PlatformUtils::getAllSupportedExtensions();
+            for (const std::string& ext : supported_extensions) {
+                sub_directory.allowExt(ext);
+            }
             sub_directory.listDir();
             for (size_t i = 0; i < sub_directory.size(); i++) {
                 plugin_files.push_back(sub_directory.getPath(i));
@@ -57,14 +61,21 @@ void graphicsEngine::loadAllPlugins() {
         std::string filename = ofFilePath::getFileName(plugin_path);
         std::string plugin_name = filename;
         
-        // Remove common prefixes and suffixes (e.g., "lib" and ".so").
-        if (plugin_name.rfind("lib", 0) == 0) { // pos=0 limits the search to the prefix
-            plugin_name = plugin_name.substr(3);
+        // Remove common prefixes and platform-specific suffixes
+        std::string prefix = PlatformUtils::getDynamicLibraryPrefix();
+        if (!prefix.empty() && plugin_name.rfind(prefix, 0) == 0) {
+            plugin_name = plugin_name.substr(prefix.length());
         }
         
-        size_t pos = plugin_name.rfind(".so");
-        if (pos != std::string::npos) {
-            plugin_name = plugin_name.substr(0, pos);
+        // Remove all supported extensions
+        std::vector<std::string> extensions = PlatformUtils::getAllSupportedExtensions();
+        for (const std::string& ext : extensions) {
+            std::string full_ext = "." + ext;
+            size_t pos = plugin_name.rfind(full_ext);
+            if (pos != std::string::npos && pos + full_ext.length() == plugin_name.length()) {
+                plugin_name = plugin_name.substr(0, pos);
+                break;
+            }
         }
         
         if (plugin_manager->loadPlugin(plugin_path, plugin_name)) {
@@ -109,7 +120,17 @@ void graphicsEngine::initializeShaderSystem() {
     }
     
     shader_manager = std::make_unique<ShaderManager>(plugin_manager.get());
-    ofLogNotice("graphicsEngine") << "Shader system initialized";
+    composition_engine = std::make_unique<ShaderCompositionEngine>(plugin_manager.get());
+    
+    ofLogNotice("graphicsEngine") << "Shader system initialized (deferred mode: " 
+                                  << (deferred_compilation_mode ? "enabled" : "disabled") << ")";
+}
+
+//--------------------------------------------------------------
+void graphicsEngine::setDeferredCompilationMode(bool enabled) {
+    deferred_compilation_mode = enabled;
+    ofLogNotice("graphicsEngine") << "Deferred compilation mode: " 
+                                  << (enabled ? "enabled" : "disabled");
 }
 
 //--------------------------------------------------------------
@@ -261,15 +282,30 @@ void graphicsEngine::processCreateMessages() {
         // Parse arguments
         std::vector<std::string> args = parseArguments(msg.raw_arguments);
         
-        // Create shader with ID
-        std::string shader_id = createShaderWithId(msg.function_name, args);
+        std::string shader_id;
         
-        if (!shader_id.empty()) {
-            osc_handler->sendCreateResponse(true, "Shader created successfully", shader_id);
-            ofLogNotice("graphicsEngine") << "OSC /create success: shader ID = " << shader_id;
+        if (deferred_compilation_mode && composition_engine) {
+            // Deferred compilation: Register node in composition engine
+            shader_id = composition_engine->registerNode(msg.function_name, args);
+            
+            if (!shader_id.empty()) {
+                ofLogNotice("graphicsEngine") << "Registered deferred node: " << shader_id;
+                osc_handler->sendCreateResponse(true, "Shader node registered for deferred compilation", shader_id);
+            } else {
+                osc_handler->sendCreateResponse(false, "Failed to register shader node");
+                ofLogError("graphicsEngine") << "OSC /create failed for function: " << msg.function_name;
+            }
         } else {
-            osc_handler->sendCreateResponse(false, "Failed to create shader");
-            ofLogError("graphicsEngine") << "OSC /create failed for function: " << msg.function_name;
+            // Immediate compilation: Use traditional ShaderManager
+            shader_id = createShaderWithId(msg.function_name, args);
+            
+            if (!shader_id.empty()) {
+                osc_handler->sendCreateResponse(true, "Shader created successfully", shader_id);
+                ofLogNotice("graphicsEngine") << "OSC /create success: shader ID = " << shader_id;
+            } else {
+                osc_handler->sendCreateResponse(false, "Failed to create shader");
+                ofLogError("graphicsEngine") << "OSC /create failed for function: " << msg.function_name;
+            }
         }
     }
 }
@@ -287,7 +323,28 @@ void graphicsEngine::processConnectMessages() {
         
         ofLogNotice("graphicsEngine") << "Processing OSC /connect: " << msg.shader_id;
         
-        bool success = connectShaderToOutput(msg.shader_id);
+        bool success = false;
+        
+        if (deferred_compilation_mode && composition_engine) {
+            // Deferred compilation: Compile the entire graph now
+            if (composition_engine->hasNode(msg.shader_id)) {
+                auto compiled_shader = composition_engine->compileGraph(msg.shader_id);
+                
+                if (compiled_shader && compiled_shader->isReady()) {
+                    current_shader = compiled_shader;
+                    success = true;
+                    ofLogNotice("graphicsEngine") << "Successfully compiled and connected deferred graph: " << msg.shader_id;
+                } else {
+                    ofLogError("graphicsEngine") << "Failed to compile deferred graph for: " << msg.shader_id;
+                }
+            } else {
+                // Fallback to traditional shader if node not found in composition engine
+                success = connectShaderToOutput(msg.shader_id);
+            }
+        } else {
+            // Traditional immediate compilation
+            success = connectShaderToOutput(msg.shader_id);
+        }
         
         if (success) {
             osc_handler->sendConnectResponse(true, "Shader connected to output");

@@ -313,7 +313,6 @@ std::string ShaderCodeGenerator::generateWrapperFunction(
     if (best_overload && best_overload != target_overload) {
         // Generate wrapper for the best matching overload
         std::stringstream wrapper;
-        std::string target_type = best_overload->paramTypes[0];
         
         // Generate wrapper function signature
         wrapper << best_overload->returnType << " " << function_name << "_wrapper(";
@@ -325,8 +324,19 @@ std::string ShaderCodeGenerator::generateWrapperFunction(
         }
         wrapper << ") {\n";
         
-        // Generate function body that combines arguments into target type
-        wrapper << "    return " << function_name << "(" << generateTypeConstructor(target_type, user_arguments) << ");\n";
+        // Generate function body - handle multi-parameter functions
+        wrapper << "    return " << function_name << "(";
+        
+        if (best_overload->paramTypes.size() == 1) {
+            // Single parameter function - use type constructor
+            std::string target_type = best_overload->paramTypes[0];
+            wrapper << generateTypeConstructor(target_type, user_arguments);
+        } else {
+            // Multi-parameter function - generate parameter list
+            wrapper << generateMultiParameterCall(best_overload, user_arguments);
+        }
+        
+        wrapper << ");\n";
         wrapper << "}\n";
         
         ofLogNotice("ShaderCodeGenerator") << "Generated wrapper function:\n" << wrapper.str();
@@ -517,7 +527,42 @@ const FunctionOverload* ShaderCodeGenerator::findBestOverloadForArguments(
         else total_components += 1; // Default to float
     }
     
-    // Find overload that can accept the total number of components
+    // PRIORITY 1: Look for multi-parameter overloads that match argument pattern
+    // Special case: 4 float arguments should prefer (vec3, float) over (vec3)
+    if (user_arguments.size() == 4 && total_components == 4) {
+        for (const auto& overload : function_metadata->overloads) {
+            if (overload.paramTypes.size() == 2 &&
+                overload.paramTypes[0] == "vec3" && 
+                overload.paramTypes[1] == "float") {
+                ofLogNotice("ShaderCodeGenerator") << "Selected 2-parameter overload (vec3, float) for 4 arguments";
+                return &overload;
+            }
+        }
+    }
+    
+    // PRIORITY 2: Look for multi-parameter overloads that can handle the argument count
+    for (const auto& overload : function_metadata->overloads) {
+        if (overload.paramTypes.size() > 1) {
+            // Calculate required components for this overload
+            int required_components = 0;
+            for (const auto& param_type : overload.paramTypes) {
+                if (param_type == "float") required_components += 1;
+                else if (param_type == "vec2") required_components += 2;
+                else if (param_type == "vec3") required_components += 3;
+                else if (param_type == "vec4") required_components += 4;
+                else required_components += 1; // Default
+            }
+            
+            // Exact component match for multi-parameter functions
+            if (required_components == total_components) {
+                ofLogNotice("ShaderCodeGenerator") << "Selected multi-parameter overload with " 
+                    << overload.paramTypes.size() << " parameters";
+                return &overload;
+            }
+        }
+    }
+    
+    // PRIORITY 3: Fall back to single-parameter overloads
     const FunctionOverload* best_match = nullptr;
     
     for (const auto& overload : function_metadata->overloads) {
@@ -542,4 +587,96 @@ const FunctionOverload* ShaderCodeGenerator::findBestOverloadForArguments(
     }
     
     return best_match;
+}
+
+//--------------------------------------------------------------
+std::string ShaderCodeGenerator::generateMultiParameterCall(
+    const FunctionOverload* overload,
+    const std::vector<std::string>& user_arguments) {
+    
+    if (!overload || overload->paramTypes.empty()) {
+        return "";
+    }
+    
+    std::stringstream call;
+    
+    // Handle specific case: sphereSDF(vec3, float) with 4 float arguments
+    if (overload->paramTypes.size() == 2 && 
+        overload->paramTypes[0] == "vec3" && 
+        overload->paramTypes[1] == "float" &&
+        user_arguments.size() == 4) {
+        
+        // First 3 arguments -> vec3, last argument -> float
+        call << "vec3(arg0, arg1, arg2), arg3";
+        return call.str();
+    }
+    
+    // General case: map arguments to parameters
+    size_t arg_index = 0;
+    
+    for (size_t param_index = 0; param_index < overload->paramTypes.size(); param_index++) {
+        if (param_index > 0) call << ", ";
+        
+        const std::string& param_type = overload->paramTypes[param_index];
+        
+        if (param_type == "float") {
+            if (arg_index < user_arguments.size()) {
+                call << "arg" << arg_index;
+                arg_index++;
+            } else {
+                call << "0.0";  // Default value
+            }
+        } else if (param_type == "vec2") {
+            if (arg_index + 1 < user_arguments.size()) {
+                call << "vec2(arg" << arg_index << ", arg" << (arg_index + 1) << ")";
+                arg_index += 2;
+            } else if (arg_index < user_arguments.size()) {
+                call << "vec2(arg" << arg_index << ", 0.0)";
+                arg_index++;
+            } else {
+                call << "vec2(0.0)";
+            }
+        } else if (param_type == "vec3") {
+            if (arg_index + 2 < user_arguments.size()) {
+                call << "vec3(arg" << arg_index << ", arg" << (arg_index + 1) << ", arg" << (arg_index + 2) << ")";
+                arg_index += 3;
+            } else if (arg_index + 1 < user_arguments.size()) {
+                call << "vec3(arg" << arg_index << ", arg" << (arg_index + 1) << ", 0.0)";
+                arg_index += 2;
+            } else if (arg_index < user_arguments.size()) {
+                call << "vec3(arg" << arg_index << ", 0.0, 0.0)";
+                arg_index++;
+            } else {
+                call << "vec3(0.0)";
+            }
+        } else if (param_type == "vec4") {
+            if (arg_index + 3 < user_arguments.size()) {
+                call << "vec4(arg" << arg_index << ", arg" << (arg_index + 1) << ", arg" << (arg_index + 2) << ", arg" << (arg_index + 3) << ")";
+                arg_index += 4;
+            } else {
+                // Fill with available arguments and pad with zeros
+                call << "vec4(";
+                for (int i = 0; i < 4; i++) {
+                    if (i > 0) call << ", ";
+                    if (arg_index < user_arguments.size()) {
+                        call << "arg" << arg_index;
+                        arg_index++;
+                    } else {
+                        call << "0.0";
+                    }
+                }
+                call << ")";
+            }
+        } else {
+            // Unknown type, use first available argument
+            if (arg_index < user_arguments.size()) {
+                call << "arg" << arg_index;
+                arg_index++;
+            } else {
+                call << "0.0";
+            }
+        }
+    }
+    
+    return call.str();
 }

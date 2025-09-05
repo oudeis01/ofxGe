@@ -1,15 +1,16 @@
 #pragma once
 #include "../glsl-plugin-interface/include/IPluginInterface.h"
 #include "../shaderSystem/MinimalBuiltinChecker.h"
+#include "../platformUtils/DynamicLoader.h"
+#include "../platformUtils/PlatformUtils.h"
 #include <unordered_map>
 #include <memory>
-#include <dlfcn.h>
 #include <set>
 #include <map>
 
 /**
  * @brief Manages the lifecycle of GLSL shader library plugins.
- * @details This class handles loading plugins from dynamic libraries (.so),
+ * @details This class handles loading plugins from dynamic libraries (.so on Linux, .dylib on macOS),
  *          unloading them, and providing access to their functions and metadata.
  *          It uses unique aliases to manage loaded plugins.
  */
@@ -24,26 +25,26 @@ private:
      *          handle is closed.
      */
     struct LoadedPlugin {
-        void* handle;               ///< Opaque handle for the dynamic library, obtained from dlopen().
-        IPluginInterface* interface;///< Pointer to the actual plugin instance created by the factory function.
-        std::string name;           ///< The internal name of the plugin.
-        std::string version;        ///< The version string of the plugin.
-        std::string author;         ///< The author of the plugin.
-        std::string path;           ///< The full path to the loaded plugin .so file.
+        DynamicLoader::LibraryHandle lib_handle; ///< Cross-platform library handle
+        IPluginInterface* interface;             ///< Pointer to the actual plugin instance created by the factory function.
+        std::string name;                        ///< The internal name of the plugin.
+        std::string version;                     ///< The version string of the plugin.
+        std::string author;                      ///< The author of the plugin.
+        std::string path;                        ///< The full path to the loaded plugin library file.
         
         /**
          * @brief Default constructor.
          */
-        LoadedPlugin() : handle(nullptr), interface(nullptr) {}
+        LoadedPlugin() : interface(nullptr) {}
         
         /**
          * @brief Constructs a LoadedPlugin instance.
-         * @param h The dynamic library handle.
+         * @param handle The cross-platform library handle.
          * @param iface A pointer to the plugin interface instance.
          * @param p The file path to the plugin library.
          */
-        LoadedPlugin(void* h, IPluginInterface* iface, const std::string& p)
-            : handle(h), interface(iface), path(p) {
+        LoadedPlugin(const DynamicLoader::LibraryHandle& handle, IPluginInterface* iface, const std::string& p)
+            : lib_handle(handle), interface(iface), path(p) {
             if (interface) {
                 name = interface->getName();
                 version = interface->getVersion();
@@ -54,17 +55,18 @@ private:
         /**
          * @brief Destructor that cleans up plugin resources.
          * @details Calls the plugin's destroyPlugin() function and then
-         *          closes the dynamic library handle using dlclose().
+         *          closes the dynamic library handle using cross-platform API.
          */
         ~LoadedPlugin() {
-            if (interface && handle) {
+            if (interface && lib_handle.is_valid) {
                 // Get the destroy function symbol from the library
                 typedef void (*destroy_plugin_t)(IPluginInterface*);
-                destroy_plugin_t destroy_plugin = (destroy_plugin_t) dlsym(handle, "destroyPlugin");
+                destroy_plugin_t destroy_plugin = (destroy_plugin_t) DynamicLoader::getSymbol(lib_handle, "destroyPlugin");
                 if (destroy_plugin) {
                     destroy_plugin(interface);
                 }
-                dlclose(handle);
+                DynamicLoader::LibraryHandle temp_handle = lib_handle;
+                DynamicLoader::unloadLibrary(temp_handle);
             }
         }
     };
@@ -86,7 +88,7 @@ public:
     // Plugin loading/unloading
     
     /**
-     * @brief Loads a plugin from a dynamic library file (.so).
+     * @brief Loads a plugin from a dynamic library file (.so on Linux, .dylib on macOS).
      * @param plugin_path The absolute path to the plugin library file.
      * @param alias A unique alias for the plugin. If empty, a name is derived from the plugin itself.
      * @return True if the plugin was loaded successfully, false otherwise.
@@ -158,7 +160,7 @@ public:
 
     /**
      * @brief Gets the file paths for all loaded plugins.
-     * @return A map where the key is the plugin alias and the value is the path to the .so file.
+     * @return A map where the key is the plugin alias and the value is the path to the library file.
      */
     std::map<std::string, std::string> getPluginPaths() const;
     
@@ -227,7 +229,7 @@ public:
 private:
     /**
      * @brief Extracts the directory path from a full path to a plugin library file.
-     * @param plugin_lib_path The full path to the .so file.
+     * @param plugin_lib_path The full path to the library file (.so or .dylib).
      * @return The path to the containing directory, including the trailing slash.
      */
     std::string extractPluginDirectory(const std::string& plugin_lib_path) const;

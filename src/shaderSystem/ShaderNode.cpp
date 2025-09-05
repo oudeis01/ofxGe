@@ -90,6 +90,23 @@ void ShaderNode::setShaderCode(const std::string& vertex, const std::string& fra
 }
 
 //--------------------------------------------------------------
+void ShaderNode::setCustomShaderCode(const std::string& custom_code) {
+    // Set a minimal vertex shader for 2D rendering
+    vertex_shader_code = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+void main() {
+    gl_Position = vec4(aPos, 1.0);
+}
+)";
+    
+    // Use the provided custom fragment shader code
+    fragment_shader_code = custom_code;
+    
+    ofLogNotice("ShaderNode") << "Set custom shader code (" << custom_code.length() << " characters)";
+}
+
+//--------------------------------------------------------------
 void ShaderNode::setError(const std::string& error) {
     has_error = true;
     error_message = error;

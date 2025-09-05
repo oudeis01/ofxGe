@@ -103,6 +103,12 @@ struct ShaderNode {
     void setShaderCode(const std::string& vertex, const std::string& fragment);
 
     /**
+     * @brief Sets custom shader code for unified compilation
+     * @param custom_code Complete fragment shader code for direct compilation
+     */
+    void setCustomShaderCode(const std::string& custom_code);
+
+    /**
      * @brief Sets the node to an error state.
      * @param error The error message to store.
      */

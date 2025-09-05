@@ -5,22 +5,27 @@
 #include <string>
 
 bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string& alias) {
-    // Load the dynamic library using dlopen. RTLD_LAZY resolves symbols as code is executed.
-    void* handle = dlopen(plugin_path.c_str(), RTLD_LAZY);
-    if (!handle) {
-        std::cerr << "Cannot load plugin: " << dlerror() << std::endl;
+    ofLogNotice("PluginManager") << "Loading plugin on " << PlatformUtils::getPlatformName()
+                                 << " - Path: " << plugin_path 
+                                 << " - Expected extension: " << PlatformUtils::getDynamicLibraryExtension();
+    
+    // Load the dynamic library using cross-platform loader
+    DynamicLoader::LibraryHandle lib_handle = DynamicLoader::loadLibrary(plugin_path);
+    if (!lib_handle.is_valid) {
+        ofLogError("PluginManager") << "Cannot load plugin: " << DynamicLoader::getLastError();
         return false;
     }
 
     // Check for ABI version compatibility between the manager and the plugin.
     typedef int (*get_abi_version_t)();
-    get_abi_version_t get_abi_version = (get_abi_version_t) dlsym(handle, "getPluginABIVersion");
+    get_abi_version_t get_abi_version = (get_abi_version_t) DynamicLoader::getSymbol(lib_handle, "getPluginABIVersion");
     if (get_abi_version) {
         int plugin_abi = get_abi_version();
         if (plugin_abi != PLUGIN_ABI_VERSION) {
-            std::cerr << "Plugin ABI version mismatch. Expected: " << PLUGIN_ABI_VERSION 
-                      << ", Got: " << plugin_abi << std::endl;
-            dlclose(handle);
+            ofLogError("PluginManager") << "Plugin ABI version mismatch. Expected: " << PLUGIN_ABI_VERSION 
+                      << ", Got: " << plugin_abi;
+            DynamicLoader::LibraryHandle temp_handle = lib_handle;
+            DynamicLoader::unloadLibrary(temp_handle);
             return false;
         }
     }
@@ -29,26 +34,28 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
     typedef IPluginInterface* (*create_plugin_t)();
     typedef const char* (*get_info_t)();
     
-    create_plugin_t create_plugin = (create_plugin_t) dlsym(handle, "createPlugin");
-    get_info_t get_info = (get_info_t) dlsym(handle, "getPluginInfo");
+    create_plugin_t create_plugin = (create_plugin_t) DynamicLoader::getSymbol(lib_handle, "createPlugin");
+    get_info_t get_info = (get_info_t) DynamicLoader::getSymbol(lib_handle, "getPluginInfo");
     
     if (!create_plugin || !get_info) {
-        std::cerr << "Invalid plugin format: missing required symbols (createPlugin or getPluginInfo)" << std::endl;
-        dlclose(handle);
+        ofLogError("PluginManager") << "Invalid plugin format: missing required symbols (createPlugin or getPluginInfo)";
+        DynamicLoader::LibraryHandle temp_handle = lib_handle;
+        DynamicLoader::unloadLibrary(temp_handle);
         return false;
     }
     
     // Create an instance of the plugin.
     IPluginInterface* plugin = create_plugin();
     if (!plugin) {
-        std::cerr << "Failed to create plugin instance" << std::endl;
-        dlclose(handle);
+        ofLogError("PluginManager") << "Failed to create plugin instance";
+        DynamicLoader::LibraryHandle temp_handle = lib_handle;
+        DynamicLoader::unloadLibrary(temp_handle);
         return false;
     }
     
     // Set the plugin's data directory path so it can find its own resources.
     std::string plugin_data_dir = extractPluginDirectory(plugin_path);
-    std::cout << "[PluginManager] Setting plugin data path: " << plugin_data_dir << std::endl;
+    ofLogNotice("PluginManager") << "Setting plugin data path: " << plugin_data_dir;
     plugin->setPath(plugin_data_dir);
     
     // Determine the alias for the plugin.
@@ -56,23 +63,24 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
     
     // Prevent loading a plugin with an alias that is already in use.
     if (loaded_plugins.find(plugin_alias) != loaded_plugins.end()) {
-        std::cerr << "Plugin with alias '" << plugin_alias << "' already loaded." << std::endl;
+        ofLogError("PluginManager") << "Plugin with alias '" << plugin_alias << "' already loaded.";
         typedef void (*destroy_plugin_t)(IPluginInterface*);
-        destroy_plugin_t destroy_plugin = (destroy_plugin_t) dlsym(handle, "destroyPlugin");
+        destroy_plugin_t destroy_plugin = (destroy_plugin_t) DynamicLoader::getSymbol(lib_handle, "destroyPlugin");
         if (destroy_plugin) {
             destroy_plugin(plugin);
         }
-        dlclose(handle);
+        DynamicLoader::LibraryHandle temp_handle = lib_handle;
+        DynamicLoader::unloadLibrary(temp_handle);
         return false;
     }
     
     // Store the new plugin in the map.
-    loaded_plugins[plugin_alias] = std::make_unique<LoadedPlugin>(handle, plugin, plugin_path);
+    loaded_plugins[plugin_alias] = std::make_unique<LoadedPlugin>(lib_handle, plugin, plugin_path);
     
-    std::cout << "Loaded plugin: " << plugin->getName() 
-              << " v" << plugin->getVersion() 
-              << " by " << plugin->getAuthor()
-              << " (" << plugin->getFunctionCount() << " functions)" << std::endl;
+    ofLogNotice("PluginManager") << "Loaded plugin: " << plugin->getName() 
+                                 << " v" << plugin->getVersion() 
+                                 << " by " << plugin->getAuthor()
+                                 << " (" << plugin->getFunctionCount() << " functions)";
     
     // Detect and log conflicts with GLSL built-ins
     detectAndLogBuiltinConflicts(plugin_alias, plugin);
@@ -83,14 +91,14 @@ bool PluginManager::loadPlugin(const std::string& plugin_path, const std::string
 void PluginManager::unloadPlugin(const std::string& alias) {
     auto it = loaded_plugins.find(alias);
     if (it != loaded_plugins.end()) {
-        std::cout << "Unloading plugin: " << alias << std::endl;
+        ofLogNotice("PluginManager") << "Unloading plugin: " << alias;
         // The unique_ptr's destructor will handle cleanup via ~LoadedPlugin().
         loaded_plugins.erase(it);
     }
 }
 
 void PluginManager::unloadAllPlugins() {
-    std::cout << "Unloading all plugins..." << std::endl;
+    ofLogNotice("PluginManager") << "Unloading all plugins...";
     loaded_plugins.clear();
 }
 
@@ -200,7 +208,9 @@ const IPluginInterface* PluginManager::getPlugin(const std::string& alias) const
 }
 
 std::string PluginManager::extractPluginDirectory(const std::string& plugin_lib_path) const {
-    // Example plugin_lib_path: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.so"
+    // Example plugin_lib_path: 
+    //   Linux: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.so"
+    //   macOS: "/path/to/bin/data/plugins/lygia-plugin/libLygiaPlugin.dylib"
     // Returns: "/path/to/bin/data/plugins/lygia-plugin/"
     
     size_t last_slash = plugin_lib_path.find_last_of('/');

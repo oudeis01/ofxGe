@@ -5,11 +5,14 @@
 #include "pluginSystem/PluginManager.h"
 #include "shaderSystem/ShaderManager.h"
 #include "shaderSystem/ShaderNode.h"
+#include "shaderSystem/ShaderCompositionEngine.h"
 #include "oscHandler/oscHandler.h"
+#include "platformUtils/PlatformUtils.h"
 
 // Forward declarations to avoid circular dependencies
 class PluginManager;
 class ShaderManager;
+class ShaderCompositionEngine;
 class OscHandler;
 
 /**
@@ -36,16 +39,22 @@ public:
     void displayPluginInfo();
 
     /**
-     * @brief Scans the plugin directory for all valid plugin files (.so).
+     * @brief Scans the plugin directory for all valid plugin files (.so on Linux, .dylib on macOS).
      * @return A vector of strings containing the absolute paths to plugin files.
      */
     std::vector<std::string> findPluginFiles();
     
     // --- Shader System Methods ---
     /**
-     * @brief Initializes the shader system, creating the ShaderManager.
+     * @brief Initializes the shader system, creating the ShaderManager and CompositionEngine.
      */
     void initializeShaderSystem();
+
+    /**
+     * @brief Enables or disables deferred compilation mode.
+     * @param enabled True to enable deferred compilation, false for immediate compilation.
+     */
+    void setDeferredCompilationMode(bool enabled);
 
     /**
      * @brief Runs a test to create a shader using a specific function (e.g., "curl").
@@ -111,6 +120,12 @@ public:
     std::unique_ptr<ShaderManager> shader_manager;
     /// @brief A pointer to the currently active shader being rendered.
     std::shared_ptr<ShaderNode> current_shader;
+    
+    // --- Composition Engine ---
+    /// @brief Manages deferred compilation of shader composition graphs.
+    std::unique_ptr<ShaderCompositionEngine> composition_engine;
+    /// @brief Flag to enable/disable deferred compilation mode.
+    bool deferred_compilation_mode;
     
     // --- OSC System ---
     /// @brief Manages OSC message receiving and sending.

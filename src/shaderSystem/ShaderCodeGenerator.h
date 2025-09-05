@@ -86,6 +86,17 @@ public:
         const FunctionOverload* target_overload
     );
     
+    /**
+     * @brief Generates parameter list for multi-parameter function calls
+     * @param overload Function overload information
+     * @param user_arguments User-provided arguments
+     * @return GLSL parameter call string
+     */
+    std::string generateMultiParameterCall(
+        const FunctionOverload* overload,
+        const std::vector<std::string>& user_arguments
+    );
+    
     // --- Expression Support ---
     /**
      * @brief Parses an argument that may be an expression
