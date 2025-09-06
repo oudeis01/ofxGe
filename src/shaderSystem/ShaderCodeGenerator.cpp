@@ -463,8 +463,8 @@ std::string ShaderCodeGenerator::generateTypeConstructor(const std::string& targ
                 // vec3(vec2.xy, float)
                 constructor << "arg0.xy, arg1";
             } else {
-                // vec3(float, float, 0.0)
-                constructor << "arg0, arg1, 0.0";
+                // Let GLSL handle vec3(float, vec2) automatically
+                constructor << "arg0, arg1";
             }
         } else if (user_arguments.size() == 3) {
             // vec3(float, float, float)

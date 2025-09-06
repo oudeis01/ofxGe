@@ -225,4 +225,28 @@ private:
      * @return True if all nodes are valid, false otherwise
      */
     bool validateDependencyChain(const std::vector<std::string>& dependency_chain);
+    
+    /**
+     * @brief Loads the source code for a specific function from plugins
+     * @param function_name The name of the function to load
+     * @param plugin_name The name of the plugin containing the function
+     * @return The complete GLSL source code, empty on error
+     */
+    std::string loadFunctionSource(const std::string& function_name, const std::string& plugin_name);
+    
+    /**
+     * @brief Extracts a specific function definition from GLSL source code
+     * @param glsl_content The complete GLSL file content
+     * @param function_name The name of the function to extract
+     * @return The function definition, empty if not found
+     */
+    std::string extractFunctionDefinition(const std::string& glsl_content, const std::string& function_name);
+    
+    /**
+     * @brief Inlines function code with variable renaming to avoid conflicts
+     * @param function_code The GLSL function code to inline
+     * @param node_id_prefix Unique prefix for this node's variables
+     * @return Modified GLSL code with renamed variables
+     */
+    std::string inlineFunctionCode(const std::string& function_code, const std::string& node_id_prefix);
 };
